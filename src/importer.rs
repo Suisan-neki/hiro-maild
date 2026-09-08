@@ -114,7 +114,7 @@ fn import_message(
     message: &Message<'_>,
     attachments_root: &Path,
 ) -> Result<ImportOutcome> {
-    let raw_sha256 = format!("{:x}", Sha256::digest(raw));
+    let raw_sha256 = to_hex(&Sha256::digest(raw));
     let message_id = message.message_id().map(clean_message_id);
     let stable_key = message_id
         .as_deref()
@@ -196,6 +196,15 @@ fn import_message(
     }
 }
 
+fn to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 fn clean_message_id(value: &str) -> String {
     value
         .trim()
@@ -236,5 +245,10 @@ mod tests {
     #[test]
     fn message_id_is_normalized() {
         assert_eq!(clean_message_id(" <abc@example.com> "), "abc@example.com");
+    }
+
+    #[test]
+    fn sha256_hex_has_expected_width() {
+        assert_eq!(to_hex(&Sha256::digest(b"hello")).len(), 64);
     }
 }
