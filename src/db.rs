@@ -20,6 +20,18 @@ pub struct MessageRow {
 }
 
 #[derive(Debug, Serialize)]
+pub struct MessageSummary {
+    pub id: i64,
+    pub subject: String,
+    pub sender_name: Option<String>,
+    pub sender_address: Option<String>,
+    pub sent_at: Option<String>,
+    pub preview: String,
+    pub attachment_names: Vec<String>,
+    pub triage: Option<TriageRow>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct AttachmentRow {
     pub id: i64,
     pub filename: String,
@@ -172,8 +184,7 @@ pub fn insert_attachment(
 pub fn list_messages(conn: &Connection, limit: usize, untriaged: bool) -> Result<Vec<MessageRow>> {
     let sql = if untriaged {
         r#"
-        SELECT m.id, m.stable_key, m.message_id, m.subject, m.sender_name, m.sender_address,
-               m.sent_at, m.body_text, m.source_path
+        SELECT m.id
           FROM messages m
           LEFT JOIN triage t ON t.message_id_fk = m.id
          WHERE t.message_id_fk IS NULL
@@ -182,47 +193,145 @@ pub fn list_messages(conn: &Connection, limit: usize, untriaged: bool) -> Result
         "#
     } else {
         r#"
-        SELECT m.id, m.stable_key, m.message_id, m.subject, m.sender_name, m.sender_address,
-               m.sent_at, m.body_text, m.source_path
+        SELECT m.id
           FROM messages m
          ORDER BY COALESCE(m.sent_at, m.imported_at) DESC
          LIMIT ?1
         "#
     };
 
-    let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map([limit as i64], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, Option<String>>(5)?,
-            row.get::<_, Option<String>>(6)?,
-            row.get::<_, String>(7)?,
-            row.get::<_, String>(8)?,
-        ))
-    })?;
+    let ids = query_ids(conn, sql, [limit as i64])?;
+    load_messages(conn, ids)
+}
 
-    let mut out = Vec::new();
-    for row in rows {
-        let (id, stable_key, message_id, subject, sender_name, sender_address, sent_at, body_text, source_path) = row?;
-        out.push(MessageRow {
-            id,
-            stable_key,
-            message_id,
-            subject,
-            sender_name,
-            sender_address,
-            sent_at,
-            body_text,
-            source_path,
-            attachments: attachments_for(conn, id)?,
-            triage: triage_for(conn, id)?,
-        });
+pub fn get_message(conn: &Connection, id: i64) -> Result<Option<MessageRow>> {
+    let base = conn
+        .query_row(
+            r#"
+            SELECT id, stable_key, message_id, subject, sender_name, sender_address,
+                   sent_at, body_text, source_path
+              FROM messages
+             WHERE id = ?1
+            "#,
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                ))
+            },
+        )
+        .optional()?;
+
+    let Some((id, stable_key, message_id, subject, sender_name, sender_address, sent_at, body_text, source_path)) = base else {
+        return Ok(None);
+    };
+
+    Ok(Some(MessageRow {
+        id,
+        stable_key,
+        message_id,
+        subject,
+        sender_name,
+        sender_address,
+        sent_at,
+        body_text,
+        source_path,
+        attachments: attachments_for(conn, id)?,
+        triage: triage_for(conn, id)?,
+    }))
+}
+
+pub fn recent_summaries(conn: &Connection, limit: usize) -> Result<Vec<MessageSummary>> {
+    let ids = query_ids(
+        conn,
+        r#"
+        SELECT id
+          FROM messages
+         ORDER BY COALESCE(sent_at, imported_at) DESC
+         LIMIT ?1
+        "#,
+        [limit as i64],
+    )?;
+    summarize_messages(conn, ids)
+}
+
+pub fn search_summaries(conn: &Connection, query: &str, limit: usize) -> Result<Vec<MessageSummary>> {
+    let pattern = format!("%{query}%");
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT DISTINCT m.id
+          FROM messages m
+          LEFT JOIN attachments a ON a.message_id_fk = m.id
+         WHERE m.subject LIKE ?1
+            OR m.body_text LIKE ?1
+            OR COALESCE(m.sender_name, '') LIKE ?1
+            OR COALESCE(m.sender_address, '') LIKE ?1
+            OR COALESCE(a.filename, '') LIKE ?1
+            OR COALESCE(a.extracted_text, '') LIKE ?1
+         ORDER BY COALESCE(m.sent_at, m.imported_at) DESC
+         LIMIT ?2
+        "#,
+    )?;
+    let ids = stmt
+        .query_map(params![pattern, limit as i64], |row| row.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    summarize_messages(conn, ids)
+}
+
+fn query_ids<const N: usize>(conn: &Connection, sql: &str, params: [i64; N]) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params, |row| row.get::<_, i64>(0))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+fn load_messages(conn: &Connection, ids: Vec<i64>) -> Result<Vec<MessageRow>> {
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(message) = get_message(conn, id)? {
+            out.push(message);
+        }
     }
     Ok(out)
+}
+
+fn summarize_messages(conn: &Connection, ids: Vec<i64>) -> Result<Vec<MessageSummary>> {
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(message) = get_message(conn, id)? {
+            out.push(MessageSummary {
+                id: message.id,
+                subject: message.subject,
+                sender_name: message.sender_name,
+                sender_address: message.sender_address,
+                sent_at: message.sent_at,
+                preview: preview(&message.body_text, 700),
+                attachment_names: message
+                    .attachments
+                    .iter()
+                    .map(|attachment| attachment.filename.clone())
+                    .collect(),
+                triage: message.triage,
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn preview(input: &str, max_chars: usize) -> String {
+    let compact = input.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= max_chars {
+        compact
+    } else {
+        compact.chars().take(max_chars).collect::<String>() + "…"
+    }
 }
 
 fn attachments_for(conn: &Connection, message_id: i64) -> Result<Vec<AttachmentRow>> {
@@ -315,4 +424,15 @@ pub fn save_triage(conn: &Connection, message_id: i64, triage: &TriageRow, raw_j
         ],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preview_is_compact_and_bounded() {
+        assert_eq!(preview("a\n  b\t c", 100), "a b c");
+        assert_eq!(preview("abcdef", 3), "abc…");
+    }
 }
