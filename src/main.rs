@@ -2,6 +2,7 @@ mod db;
 mod discovery;
 mod extract;
 mod importer;
+mod mcp;
 mod triage;
 
 use std::path::PathBuf;
@@ -39,6 +40,13 @@ enum Command {
         /// Show only messages that do not yet have AI triage data.
         #[arg(long)]
         untriaged: bool,
+    },
+
+    /// Serve a read-only MCP endpoint backed by the local SQLite database.
+    Serve {
+        /// Local address for the MCP Streamable HTTP server.
+        #[arg(long, default_value = "127.0.0.1:8000", env = "HIRO_MAILD_MCP_BIND")]
+        bind: String,
     },
 
     /// Triage untriaged messages with the OpenAI Responses API.
@@ -87,6 +95,14 @@ fn main() -> Result<()> {
             for row in db::list_messages(&conn, limit, untriaged)? {
                 println!("{}", serde_json::to_string(&row)?);
             }
+        }
+        Command::Serve { bind } => {
+            drop(conn);
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .context("failed to create Tokio runtime")?;
+            runtime.block_on(mcp::serve(database_path, bind))?;
         }
         Command::Triage {
             limit,
