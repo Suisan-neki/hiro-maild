@@ -1,0 +1,31 @@
+From teacher@example.com Mon Sep  7 12:00:00 2026
+From: Test Teacher <teacher@example.com>
+To: student@hiroshima-u.ac.jp
+Date: Mon, 7 Sep 2026 12:00:00 +0900
+Message-ID: <test-1@example.com>
+Subject: =?UTF-8?B?5YaN6Kmm6aiT44Gu5pel56iL?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+再試験は9月18日14:00からです。
+
+From office@example.com Mon Sep  7 13:00:00 2026
+From: Student Office <office@example.com>
+To: student@hiroshima-u.ac.jp
+Date: Mon, 7 Sep 2026 13:00:00 +0900
+Message-ID: <test-2@example.com>
+Subject: Attachment test
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b"
+
+--b
+Content-Type: text/plain; charset=UTF-8
+
+添付を確認してください。
+--b
+Content-Type: text/plain; name="notice.txt"
+Content-Disposition: attachment; filename="notice.txt"
+Content-Transfer-Encoding: base64
+
+5o+Q5Ye65pyf6ZmQ77yaMjAyNuW5tDnmnIgyMOaXpQ==
+--b--
