@@ -1,3 +1,4 @@
+mod daemon;
 mod db;
 mod discovery;
 mod extract;
@@ -7,7 +8,7 @@ mod triage;
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
@@ -49,6 +50,19 @@ enum Command {
         bind: String,
     },
 
+    /// Periodically import Thunderbird mail and serve the read-only MCP endpoint.
+    Daemon {
+        /// Thunderbird account store. Auto-detected when omitted.
+        #[arg(long, env = "HIRO_MAILD_THUNDERBIRD_STORE")]
+        store: Option<PathBuf>,
+        /// Local address for the MCP Streamable HTTP server.
+        #[arg(long, default_value = "127.0.0.1:8000", env = "HIRO_MAILD_MCP_BIND")]
+        bind: String,
+        /// Seconds between local Thunderbird imports. Minimum 30 seconds.
+        #[arg(long, default_value_t = 300, env = "HIRO_MAILD_SYNC_INTERVAL_SECONDS")]
+        interval_seconds: u64,
+    },
+
     /// Triage untriaged messages with the OpenAI Responses API.
     Triage {
         #[arg(long, default_value_t = 20)]
@@ -76,20 +90,12 @@ fn main() -> Result<()> {
             discovery::run_doctor(&data_dir)?;
         }
         Command::Sync { store } => {
-            let store = match store {
-                Some(path) => path,
-                None => discovery::select_hiroshima_store()?,
-            };
-            let stats = importer::sync_store(&conn, &store, &data_dir.join("attachments"))?;
-            println!(
-                "scanned_files={} parsed_messages={} imported_messages={} skipped_existing={} parse_errors={} attachments_saved={}",
-                stats.scanned_files,
-                stats.parsed_messages,
-                stats.imported_messages,
-                stats.skipped_existing,
-                stats.parse_errors,
-                stats.attachments_saved
-            );
+            let store = resolve_store(store)?;
+            print_sync(importer::sync_store(
+                &conn,
+                &store,
+                &data_dir.join("attachments"),
+            )?);
         }
         Command::List { limit, untriaged } => {
             for row in db::list_messages(&conn, limit, untriaged)? {
@@ -98,11 +104,27 @@ fn main() -> Result<()> {
         }
         Command::Serve { bind } => {
             drop(conn);
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .context("failed to create Tokio runtime")?;
-            runtime.block_on(mcp::serve(database_path, bind))?;
+            runtime()?.block_on(mcp::serve(database_path, bind))?;
+        }
+        Command::Daemon {
+            store,
+            bind,
+            interval_seconds,
+        } => {
+            if interval_seconds < 30 {
+                bail!("--interval-seconds must be at least 30");
+            }
+            let store = resolve_store(store)?;
+            let attachments_root = data_dir.join("attachments");
+            print_sync(importer::sync_store(&conn, &store, &attachments_root)?);
+            drop(conn);
+            runtime()?.block_on(daemon::run(
+                database_path,
+                attachments_root,
+                store,
+                bind,
+                interval_seconds,
+            ))?;
         }
         Command::Triage {
             limit,
@@ -114,4 +136,30 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_store(store: Option<PathBuf>) -> Result<PathBuf> {
+    match store {
+        Some(path) => Ok(path),
+        None => discovery::select_hiroshima_store(),
+    }
+}
+
+fn runtime() -> Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("failed to create Tokio runtime")
+}
+
+fn print_sync(stats: importer::SyncStats) {
+    println!(
+        "sync scanned_files={} parsed_messages={} imported_messages={} skipped_existing={} parse_errors={} attachments_saved={}",
+        stats.scanned_files,
+        stats.parsed_messages,
+        stats.imported_messages,
+        stats.skipped_existing,
+        stats.parse_errors,
+        stats.attachments_saved
+    );
 }
