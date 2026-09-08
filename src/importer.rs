@@ -251,4 +251,36 @@ mod tests {
     fn sha256_hex_has_expected_width() {
         assert_eq!(to_hex(&Sha256::digest(b"hello")).len(), 64);
     }
+
+    #[test]
+    fn imports_fixture_and_deduplicates_second_sync() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = temp.path().join("outlook.office365.com");
+        let attachments = temp.path().join("attachments");
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::copy("tests/fixtures/sample.mbox", store.join("Inbox")).unwrap();
+        std::fs::write(store.join("Inbox.msf"), b"").unwrap();
+
+        let conn = db::open(&temp.path().join("mail.sqlite3")).unwrap();
+        let first = sync_store(&conn, &store, &attachments).unwrap();
+        assert_eq!(first.scanned_files, 1);
+        assert_eq!(first.imported_messages, 2);
+        assert_eq!(first.attachments_saved, 1);
+
+        let messages = db::list_messages(&conn, 10, false).unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].subject, "Attachment test");
+        assert_eq!(messages[0].attachments.len(), 1);
+        assert_eq!(messages[0].attachments[0].filename, "notice.txt");
+        assert!(messages[0].attachments[0]
+            .extracted_text
+            .as_deref()
+            .unwrap_or_default()
+            .contains("提出期限"));
+
+        let second = sync_store(&conn, &store, &attachments).unwrap();
+        assert_eq!(second.imported_messages, 0);
+        assert_eq!(second.skipped_existing, 2);
+        assert_eq!(db::list_messages(&conn, 10, false).unwrap().len(), 2);
+    }
 }
