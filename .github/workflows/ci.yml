@@ -7,17 +7,59 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: hiro-maild-linux-x86_64
+            package: hiro-maild-linux-x86_64.tar.gz
+          - os: macos-latest
+            artifact_name: hiro-maild-macos-arm64
+            package: hiro-maild-macos-arm64.tar.gz
+          - os: windows-latest
+            artifact_name: hiro-maild-windows-x86_64
+            package: hiro-maild-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Check
         run: cargo check --all-targets
+
       - name: Test
         run: cargo test --all-targets
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package release binary (Unix)
+        if: runner.os != 'Windows'
+        run: tar -czf "${{ matrix.package }}" -C target/release hiro-maild
+
+      - name: Package release binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/release/hiro-maild.exe -DestinationPath "${{ matrix.package }}"
+
+      - name: Upload release binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.package }}
+          if-no-files-found: error
+
+      - name: Upload generated Cargo.lock
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
