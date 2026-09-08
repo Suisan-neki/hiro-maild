@@ -200,7 +200,7 @@ pub fn list_messages(conn: &Connection, limit: usize, untriaged: bool) -> Result
         "#
     };
 
-    let ids = query_ids(conn, sql, [limit as i64])?;
+    let ids = query_ids(conn, sql, limit as i64)?;
     load_messages(conn, ids)
 }
 
@@ -258,7 +258,7 @@ pub fn recent_summaries(conn: &Connection, limit: usize) -> Result<Vec<MessageSu
          ORDER BY COALESCE(sent_at, imported_at) DESC
          LIMIT ?1
         "#,
-        [limit as i64],
+        limit as i64,
     )?;
     summarize_messages(conn, ids)
 }
@@ -286,9 +286,9 @@ pub fn search_summaries(conn: &Connection, query: &str, limit: usize) -> Result<
     summarize_messages(conn, ids)
 }
 
-fn query_ids<const N: usize>(conn: &Connection, sql: &str, params: [i64; N]) -> Result<Vec<i64>> {
+fn query_ids(conn: &Connection, sql: &str, limit: i64) -> Result<Vec<i64>> {
     let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map(params, |row| row.get::<_, i64>(0))?;
+    let rows = stmt.query_map([limit], |row| row.get::<_, i64>(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
