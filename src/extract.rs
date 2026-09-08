@@ -74,7 +74,7 @@ fn extract_ooxml(bytes: &[u8], kind: OoxmlKind) -> Result<String> {
 
     let mut out = String::new();
     for name in names {
-        let mut file = archive.by_name(&name)?;
+        let file = archive.by_name(&name)?;
         let mut xml = Vec::new();
         file.take(MAX_XML_BYTES_PER_PART).read_to_end(&mut xml)?;
         let text = xml_text(&xml)?;
@@ -110,9 +110,7 @@ fn xml_text(xml: &[u8]) -> Result<String> {
             Event::End(end) => {
                 let name = end.name();
                 let local = name.as_ref();
-                if (local == b"w:p" || local == b"a:p" || local == b"row" || local == b"sheetData")
-                    && !out.ends_with('\n')
-                {
+                if matches!(local, "w:p" | "a:p" | "row" | "sheetData") && !out.ends_with('\n') {
                     out.push('\n');
                 }
             }
