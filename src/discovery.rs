@@ -103,7 +103,7 @@ pub fn find_hiroshima_stores() -> Vec<PathBuf> {
                 .get(&format!("mail.server.{server_id}.directory-rel"))
                 .and_then(|relative| resolve_profile_relative(&profile, relative))
                 .or_else(|| {
-                    find_matching_outlook_store(&profile.join("ImapMail"), server_id, &prefs)
+                    find_matching_outlook_store(&profile.join("ImapMail"), &server_id, &prefs)
                 });
 
             if let Some(path) = path.filter(|path| store_looks_like_mailbox(path)) {
