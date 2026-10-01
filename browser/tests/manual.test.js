@@ -6,7 +6,7 @@ import init, {
   compose_mime,
   forward_id,
 } from "../pkg/hiro_mail_core.js";
-import { Ledger, exclusive } from "../src/ledger.js";
+import { Ledger, exclusive, ledgerName } from "../src/ledger.js";
 import { Engine } from "../src/engine.js";
 import {
   MailApi,
@@ -370,4 +370,12 @@ it("stops between messages, holds invalid MIME, and prevents resending after suc
   await crashed.engine.run();
   expect(crashed.api.sent).toHaveLength(1);
   expect((await crashed.ledger.rows())[0].status).toBe("unknown");
+});
+
+it("uses the same history for the directory URL and index.html", () => {
+  expect(ledgerName("https://suisan-neki.github.io/hiro-maild/")).toBe(
+    ledgerName(
+      "https://suisan-neki.github.io/hiro-maild/index.html?source=bookmark",
+    ),
+  );
 });

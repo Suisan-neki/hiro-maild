@@ -8,8 +8,11 @@ const request = (r) =>
         new Error("ブラウザーへの保存に失敗しました。送信は続行しません。"),
       );
   });
+export function ledgerName(href = globalThis.location?.href) {
+  return `hiro-maild-manual-v1:${href ? new URL(".", href).pathname : "/"}`;
+}
 export class Ledger {
-  static async open(name = `hiro-maild-manual-v1:${globalThis.location?.pathname || "/"}`) {
+  static async open(name = ledgerName()) {
     const r = indexedDB.open(name, 1);
     r.onupgradeneeded = () => {
       r.result.createObjectStore("meta", { keyPath: "key" });

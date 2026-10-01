@@ -2,7 +2,7 @@
 
 広島大学のメールを、本文・添付込みで個人Gmailへ転送します。**無料のWeb版はGitHub Pagesで公開し、ブラウザーを開いて「同期して転送」を押したときだけ動きます。** 1日2回など手動で確認する用途に対応し、常時稼働サーバー・Render・有料ディスク・Thunderbirdは不要です。既存RustのMIME処理をWebAssemblyとして共用しています。
 
-**[無料Web版のログイン設定・使い方](docs/WEB_DEPLOYMENT.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md)
+**[無料Web画面を開く](https://suisan-neki.github.io/hiro-maild/)** · **[ログイン設定・使い方](docs/WEB_DEPLOYMENT.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md)
 
 初回だけGoogle/MicrosoftのOAuthアプリを登録し、公開client IDを画面から設定します。両方にログインして、転送開始日時を明示し、送信なしの対象確認後に転送します。アクセストークンは画面のメモリ、履歴は同じブラウザーのIndexedDBに保持します。画面終了後は再接続が必要で、別端末・サイトデータ削除後には履歴を引き継げません。大学側の管理者同意が必要か、実アカウントでの送受信は未確認です。
 

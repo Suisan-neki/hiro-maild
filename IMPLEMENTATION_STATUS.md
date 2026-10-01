@@ -27,13 +27,15 @@ GitHub Actionsはビルド、架空メールでのテスト、静的サイト公
 - `cargo test --all-targets --locked --offline`：成功、39件（37 unit + 2 integration）。
 - `cargo test -p hiro-mail-core --locked --offline`：成功、3件。
 - `npm run build`：Rust/WASMおよび静的本番サイトのビルド成功。
-- `npm test`：成功、19件。中断・不正MIME・成功後保存失敗も検証。
+- `npm test`：成功、20件。中断・不正MIME・成功後保存失敗、通常URL/index.htmlでの履歴共有も検証。
 - 本番ビルドをMacのブラウザーで確認：初期設定案内、未接続時の送信禁止、日時指定、空client IDの拒否。実アカウントのログインは行っていません。
 - ローカルはmacOS ARM64 / Rust 1.95.0 / Node 24.10.0。既存のビルド領域の読み取り停滞を避け、Rustは`/tmp/hiro-maild-web-target`を使用。既存MCPの非推奨/dead-code警告は残ります。
 
 テストは架空メール・偽API・偽トークンだけを使用し、実メールは送信しません。RustのHTTPテストはloopbackモックを使います。ブラウザーテストには実WASMとfake IndexedDBを使い、添付/CID/入れ子メール/原本バイト、受信日時での初回範囲、送信なし確認、再開・再取得・別Graph IDの重複防止、429再試行、結果不明の保留、ページ失敗と期限切れからの再開、タブ排他、送信前保存失敗、上限超過を検証しています。
 
-GitHub PagesはActions方式で有効化済み。サイト本体の公開workflowはこれから実行します。以前のWebサーバー追加コミットはLinux/macOS/Windowsのcheck/testが成功しています。最終変更のCIと公開の結果は完了後に更新します。
+[GitHub Pages](https://suisan-neki.github.io/hiro-maild/)を公開済み。[最初の公開workflow](https://github.com/Suisan-neki/hiro-maild/actions/runs/36843147647)のbuild/deployが成功し、公開画面の起動とエラーなしをブラウザーで確認しました。Pagesの公開許可にはmainとレビュー用ブランチを登録しています。
+
+[共有Rust/WASM追加のCI](https://github.com/Suisan-neki/hiro-maild/actions/runs/36843147586)でLinux/macOS/Windowsのcargo check/testが成功。公開URLの正規化はブラウザーコードだけの修正で、20件のローカルテストが成功しています。各pushの「browser-pages」workflowでもWASMビルドとブラウザーテストを成功させてから公開します。
 
 ## 実アカウントで未確認
 

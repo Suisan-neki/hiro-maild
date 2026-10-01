@@ -2,13 +2,13 @@
 
 普段使うブラウザーで1日2回など「同期して転送」を押す構成です。**有料サーバー・Render・永続ディスク・Macの常時起動は不要**です。ブラウザーからMicrosoft Graphを読み、Gmail APIへ送信します。RustのMIME処理をWebAssemblyとして画面に同梱しています。画面を閉じると処理は止まります。GitHub Actionsはビルド・テスト・静的サイト公開だけを行い、メール処理や定期送信はしません。
 
-公開先：`https://suisan-neki.github.io/hiro-maild/`。公開成功はGitHubの「browser-pages」workflowとSettings → Pagesで確認してください。サイトには秘密情報・メール・アカウント固有の設定を含めません。
+公開先：`https://suisan-neki.github.io/hiro-maild/`。公開成功はGitHubの「browser-pages」workflowとSettings → Pagesで確認できます。レビュー用ブランチから公開済みです。サイトには秘密情報・メール・アカウント固有の設定を含めません。
 
 ## 1. GitHub Pagesを公開
 
 この公開リポジトリでは[GitHub FreeでPagesを利用できます](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。Settings → Pages → Build and deployment → Sourceを**GitHub Actions**にします。
 
-`.github/workflows/pages.yml`は`main`またはレビュー用の`codex/gmail-forwarding`へのpushで、Rust MIMEのテスト、WASMビルド、ブラウザーテストを通してから公開します。PRイベントではテストだけです。プラン変更やカード登録は不要です。forkで使う場合は自分のPages URLを以下の登録に使います。
+`.github/workflows/pages.yml`は`main`またはレビュー用の`codex/gmail-forwarding`へのpushで、Rust MIMEのテスト、WASMビルド、ブラウザーテストを通してから公開します。PRイベントではテストだけです。レビュー用ブランチから公開する場合はSettings → Environments → github-pagesのDeployment branchesに`codex/gmail-forwarding`を追加します（このリポジトリでは設定済み）。プラン変更やカード登録は不要です。forkで使う場合は自分のPages URLを以下の登録に使います。
 
 ## 2. Googleを初回登録
 
