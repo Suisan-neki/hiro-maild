@@ -2,7 +2,14 @@ use std::{path::PathBuf, time::Duration};
 
 use anyhow::Result;
 
-use crate::{db, importer, mcp};
+use crate::{db, forward, importer, mcp};
+
+#[derive(Clone)]
+pub struct ForwardOptions {
+    pub data_dir: PathBuf,
+    pub dry_run: bool,
+    pub limit: usize,
+}
 
 pub async fn run(
     database_path: PathBuf,
@@ -10,6 +17,7 @@ pub async fn run(
     store: PathBuf,
     bind: String,
     interval_seconds: u64,
+    forwarding: Option<ForwardOptions>,
 ) -> Result<()> {
     let sync_database = database_path.clone();
     let sync_task = tokio::spawn(async move {
@@ -20,6 +28,7 @@ pub async fn run(
             let database_path = sync_database.clone();
             let attachments_root = attachments_root.clone();
             let store = store.clone();
+            let forwarding = forwarding.clone();
             let outcome = tokio::task::spawn_blocking(move || -> Result<()> {
                 let conn = db::open(&database_path)?;
                 let stats = importer::sync_store(&conn, &store, &attachments_root)?;
@@ -32,13 +41,17 @@ pub async fn run(
                     stats.parse_errors,
                     stats.attachments_saved
                 );
+                // Deliver previously queued mail even when a mailbox reported parse errors.
+                if let Some(options) = forwarding {
+                    forward::run(&conn, &options.data_dir, options.limit, options.dry_run)?;
+                }
                 Ok(())
             })
             .await;
 
             match outcome {
                 Ok(Ok(())) => {}
-                Ok(Err(error)) => eprintln!("warning: scheduled sync failed: {error:#}"),
+                Ok(Err(error)) => eprintln!("warning: scheduled sync/forward failed: {error:#}"),
                 Err(error) => eprintln!("warning: scheduled sync task failed: {error}"),
             }
         }
