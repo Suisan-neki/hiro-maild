@@ -35,6 +35,7 @@ GitHub Actionsはビルド、架空メールでのテスト、静的サイト公
 - `cargo check --all-targets --locked --offline`：成功。
 - `cargo test --all-targets --locked --offline`：成功、44件（42 unit + 2 integration）。ローカル画面の開始範囲・添付・読み取り専用・再試行・重複防止・Host/Origin/CSRFを含む5件を追加。
 - `cargo test -p hiro-mail-core --locked --offline`：成功、3件。
+- `cargo build --release --locked --offline`：成功。実行用バイナリをこのMacへ配置し、`com.suisan.hiro-maild-local-web` のlaunchd稼働と `127.0.0.1:8082` の画面を確認。自動送信は設定していません。
 - `npm run build`：Rust/WASMおよび静的本番サイトのビルド成功。
 - `npm test`：成功、20件。中断・不正MIME・成功後保存失敗、通常URL/index.htmlでの履歴共有も検証。
 - ローカル画面をMacのアプリ内ブラウザで確認：開始日時の保存、添付付き架空メールのdry-run、認証前の送信禁止、履歴未作成を確認。実メールは送信していません。
@@ -58,7 +59,7 @@ GitHub Actionsはビルド、架空メールでのテスト、静的サイト公
 - 実際の大学Inbox/Graph delta/MIMEとブラウザーCORS通信。
 - 個人Gmailへの受信、HTML/CID/添付表示、添付検査、迷惑メール判定、same-account Inboxへの到着。
 - ユーザーが普段使うブラウザーでの保存容量・退避/削除・Macスリープや通信中断の挙動。
-- ローカル方式の実Thunderbirdプロフィール、完全同期、Keychain、launchd自動起動。標準のThunderbird保存先はこのMacで未検出です。
+- ローカル方式の実Thunderbirdプロフィール、完全同期、Keychain、Mac再ログイン時のlaunchd自動起動。現在のlaunchdプロセス稼働は確認済みです。標準のThunderbird保存先はこのMacで未検出です。
 
 ログインできること・大学側が承認すること・実メールが届くことは、モック検証だけでは保証していません。アプリ登録後、送信なしで対象を確認し、最初の少量をGmailで手動照合してください。
 
@@ -82,4 +83,4 @@ GitHub Actionsはビルド、架空メールでのテスト、静的サイト公
 
 baseline main：`eb1443a7cc5db6480168af46209d8c84c039d59a`。[baseline CI成功](https://github.com/Suisan-neki/hiro-maild/actions/runs/34246031167)をGitHub APIで確認済み。既存ソースにmbox import、daemon、read-only MCP、任意AIトリアージがあり、以前のREADME/状態記述を修正しました。
 
-レビュー用ブランチ：`codex/gmail-forwarding`。[PR #1](https://github.com/Suisan-neki/hiro-maild/pull/1)。以前のローカル転送実装`ad22c8e`、Rustサーバー版`a2d0db0`に続け、無料ブラウザー手動同期を追加しています。PR #1はユーザーがmainへマージ済みです（`99acb0961433b8f1f67f9d68dd9b04e7b2248522`）。ローカル画面の追加は `codex/local-thunderbird-ui` でレビューできます。
+レビュー用ブランチ：`codex/gmail-forwarding`。[PR #1](https://github.com/Suisan-neki/hiro-maild/pull/1)。以前のローカル転送実装`ad22c8e`、Rustサーバー版`a2d0db0`に続け、無料ブラウザー手動同期を追加しています。PR #1はユーザーがmainへマージ済みです（`99acb0961433b8f1f67f9d68dd9b04e7b2248522`）。ローカル画面の追加は `codex/local-thunderbird-ui` の [PR #2](https://github.com/Suisan-neki/hiro-maild/pull/2) でレビューできます。
