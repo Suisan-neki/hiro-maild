@@ -6,15 +6,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use base64::{Engine, engine::general_purpose::STANDARD};
 use fs2::FileExt;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use time::{
-    OffsetDateTime,
-    format_description::well_known::{Rfc2822, Rfc3339},
-};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{db, gmail};
 
@@ -392,37 +387,7 @@ pub fn retry(conn: &Connection, id: i64, accept_duplicate_risk: bool) -> Result<
 }
 
 pub(crate) fn forwarding_message_id(stable_key: &str, gmail: &str) -> String {
-    let digest = Sha256::digest(format!("{gmail}\n{stable_key}"));
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("<hiro-maild.{hex}@hiro-maild.local>")
-}
-
-fn encoded_text(value: &str) -> String {
-    // RFC2047 words stay below 75 bytes, even for long/untrusted subjects.
-    let clean = value.replace(['\r', '\n'], " ");
-    let mut chunks = Vec::new();
-    let mut chunk = String::new();
-    for ch in clean.chars() {
-        if chunk.len() + ch.len_utf8() > 42 {
-            chunks.push(format!("=?UTF-8?B?{}?=", STANDARD.encode(&chunk)));
-            chunk.clear();
-        }
-        chunk.push(ch);
-    }
-    if !chunk.is_empty() {
-        chunks.push(format!("=?UTF-8?B?{}?=", STANDARD.encode(chunk)));
-    }
-    chunks.join("\r\n ")
-}
-
-fn base64_lines(bytes: &[u8]) -> String {
-    let encoded = STANDARD.encode(bytes);
-    encoded
-        .as_bytes()
-        .chunks(76)
-        .map(|c| std::str::from_utf8(c).unwrap())
-        .collect::<Vec<_>>()
-        .join("\r\n")
+    hiro_mail_core::forwarding_message_id(stable_key, gmail)
 }
 
 pub fn build_mime(conn: &Connection, id: i64, gmail: &str) -> Result<Vec<u8>> {
@@ -435,65 +400,23 @@ pub fn build_mime(conn: &Connection, id: i64, gmail: &str) -> Result<Vec<u8>> {
             |row| row.get(0),
         )
         .context("original MIME missing; resync Thunderbird before forwarding")?;
-    // Fixed conservative cap, including MIME/base64 overhead and the original .eml copy.
-    if raw.len() > 18 * 1024 * 1024 {
-        bail!("original MIME exceeds forwarding cap");
-    }
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .map(|p| (p, p + 4))
-        .or_else(|| {
-            raw.windows(2)
-                .position(|w| w == b"\n\n")
-                .map(|p| (p, p + 2))
-        })
-        .context("MIME header separator missing")?;
-    let headers = std::str::from_utf8(&raw[..split.0]).context("non-UTF8 MIME headers")?;
-    let mut content_headers = String::new();
-    let mut retain = false;
-    let mut has_type = false;
-    for line in headers.lines() {
-        if !line.starts_with([' ', '\t']) {
-            let name = line
-                .split_once(':')
-                .map(|(name, _)| name.to_ascii_lowercase())
-                .unwrap_or_default();
-            retain = name.starts_with("content-");
-            has_type |= name == "content-type";
-        }
-        if retain {
-            content_headers.push_str(line.trim_end_matches('\r'));
-            content_headers.push_str("\r\n");
-        }
-    }
-    if !has_type {
-        content_headers.push_str("Content-Type: text/plain; charset=us-ascii\r\n");
-    }
-    let mut boundary = format!("hiro-maild-{}", gmail::random_token()?);
-    while raw
-        .windows(boundary.len())
-        .any(|w| w == boundary.as_bytes())
-    {
-        boundary = format!("hiro-maild-{}", gmail::random_token()?);
-    }
-    let metadata = format!(
-        "Forwarded from Thunderbird local mail.\nOriginal From: {} <{}>\nOriginal Date: {}\nOriginal Subject: {}\nOriginal Message-ID: {}\nThe complete local original is attached as original.eml.\n\n",
-        message.sender_name.as_deref().unwrap_or_default(),
-        message.sender_address.as_deref().unwrap_or("unknown"),
-        message.sent_at.as_deref().unwrap_or("unknown"),
-        message.subject,
-        message.message_id.as_deref().unwrap_or("none")
-    );
-    let mut output = format!("From: {gmail}\r\nTo: {gmail}\r\nDate: {}\r\nMessage-ID: {}\r\nSubject: {}\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n--{boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n--{boundary}\r\n{content_headers}\r\n",
-        OffsetDateTime::now_utc().format(&Rfc2822)?, forwarding_message_id(&message.stable_key, gmail),
-        encoded_text(&format!("[広大メール] {}", message.subject)), base64_lines(metadata.as_bytes())).into_bytes();
-    output.extend_from_slice(&raw[split.1..]);
-    output.extend_from_slice(format!("\r\n--{boundary}\r\nContent-Type: application/octet-stream; name=\"original.eml\"\r\nContent-Disposition: attachment; filename=\"original.eml\"\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n--{boundary}--\r\n", base64_lines(&raw)).as_bytes());
-    if output.len() > 34 * 1024 * 1024 {
-        bail!("composed MIME exceeds conservative Gmail cap");
-    }
-    Ok(output)
+    let metadata = hiro_mail_core::Metadata {
+        stable_key: message.stable_key,
+        subject: message.subject,
+        sender_name: message.sender_name.unwrap_or_default(),
+        sender_address: message
+            .sender_address
+            .unwrap_or_else(|| "unknown".to_string()),
+        sent_at: message.sent_at.unwrap_or_else(|| "unknown".to_string()),
+        message_id: message.message_id.unwrap_or_else(|| "none".to_string()),
+    };
+    hiro_mail_core::compose(
+        &raw,
+        &metadata,
+        gmail,
+        &gmail::random_token()?,
+        OffsetDateTime::now_utc(),
+    )
 }
 
 #[cfg(test)]
@@ -907,11 +830,6 @@ mod tests {
     #[test]
     fn header_injection_is_encoded_and_destination_is_validated() {
         assert!(validate_gmail("student@gmail.com\r\nBcc: other@example.com").is_err());
-        let value = encoded_text("subject\r\nBcc: other@example.com");
-        assert!(!value.contains("\r\nBcc:"));
-        for line in encoded_text(&"長い件名".repeat(100)).lines() {
-            assert!(line.len() <= 75);
-        }
     }
 
     #[test]

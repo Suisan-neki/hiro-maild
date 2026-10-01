@@ -1,0 +1,19 @@
+{
+  "name": "hiro-maild-browser",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 8081",
+    "build:wasm": "wasm-pack build ../crates/mail-core --target web --out-dir ../../browser/pkg --release -- --features browser --locked",
+    "build": "npm run build:wasm && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "5.23.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.1",
+    "vitest": "5.0.3",
+    "fake-indexeddb": "6.2.5"
+  }
+}

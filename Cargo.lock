@@ -880,6 +880,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "hiro-mail-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "mail-parser",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "time",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "hiro-maild"
 version = "0.1.0"
 dependencies = [
@@ -890,6 +904,7 @@ dependencies = [
  "clap",
  "fs2",
  "getrandom 0.4.3",
+ "hiro-mail-core",
  "keyring",
  "mail-parser",
  "pdf-extract",

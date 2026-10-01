@@ -1,14 +1,14 @@
 # hiro-maild
 
-広島大学のメールを読み取り、本文・添付・原本MIMEを保存して、個人Gmailへ転送するRustアプリです。**Web版ではブラウザーからGmailと大学のMicrosoftアカウントを接続でき、Mac・Thunderbirdの常時起動は不要です。** 画面と定期workerをRenderにまとめて公開します。
+広島大学のメールを、本文・添付込みで個人Gmailへ転送します。**無料のWeb版はGitHub Pagesで公開し、ブラウザーを開いて「同期して転送」を押したときだけ動きます。** 1日2回など手動で確認する用途に対応し、常時稼働サーバー・Render・有料ディスク・Thunderbirdは不要です。既存RustのMIME処理をWebAssemblyとして共用しています。
 
-**[Web版の設定・Renderへのデプロイ手順](docs/WEB_DEPLOYMENT.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md)
+**[無料Web版のログイン設定・使い方](docs/WEB_DEPLOYMENT.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md)
 
-Web版は1デプロイ1人用です。所有者Gmailを設定し、開始日時を明示して、送信なしの対象確認後に転送を有効にします。GraphのInboxのみを読み、大学側への書込み権限を要求しません。OAuthアプリの登録とRenderの永続ディスク付き有料サービスが必要です。実アカウントの同意と実際の公開は未検証です。
+初回だけGoogle/MicrosoftのOAuthアプリを登録し、公開client IDを画面から設定します。両方にログインして、転送開始日時を明示し、送信なしの対象確認後に転送します。アクセストークンは画面のメモリ、履歴は同じブラウザーのIndexedDBに保持します。画面終了後は再接続が必要で、別端末・サイトデータ削除後には履歴を引き継げません。大学側の管理者同意が必要か、実アカウントでの送受信は未確認です。
 
-従来のThunderbirdローカルmbox方式、read-only MCP、任意実行のAIトリアージもCLIに残っています。今回AI機能は拡張しておらず、Web worker/daemonはAIを呼び出しません。以下のMac手順はローカル方式向けです。
+大学Inboxは読み取りだけで、既読化・移動・削除・返信を行いません。Gmail転送は認証した個人Gmailから同じGmailへ新しいメールを送る処理です。初回の大量転送防止、再同期の重複排除、履歴、失敗の再試行、結果不明時の保留を実装しています。
 
-大学のサーバーやThunderbirdストアに書き込む処理、既読化・移動・削除・返信はありません。Gmail転送は、認証した個人Gmailから同じGmail宛に新しいメールを送る処理です。
+従来のThunderbirdローカルmbox方式、read-only MCP、任意実行のAIトリアージもCLIに残っています。今回AI機能は拡張していません。以下のMac/daemon手順は**ローカル方式向け**です。以前用意した[有料サーバー版](docs/SERVER_DEPLOYMENT.md)も参考として残しますが、今回の無料手動同期では使用しません。
 
 ## 公式案内と認証方式
 
@@ -16,7 +16,7 @@ Web版は1デプロイ1人用です。所有者Gmailを設定し、開始日時�
 
 Gmail APIの[users.messages.send](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send)を使い、OAuth Desktop appの[loopback + PKCE認証](https://developers.google.com/identity/protocols/oauth2/native-app)を実装しています。メールの権限は`gmail.send`のみ。アカウントの照合用に`openid email`も要求し、Gmailの読取・削除権限は要求しません。通常のGoogleパスワードやSMTPアプリパスワードは使いません。Googleは[アプリパスワードよりGoogleによるログインを推奨](https://support.google.com/mail/answer/185833?hl=en)しています。
 
-ローカルCLIの実送信と認証はmacOSのキーチェーン対応です。Web版はGoogle/MicrosoftのWeb OAuthを使い、refresh tokenをサーバーで暗号化して保存します。Web版の認証方式と権限は[設定手順](docs/WEB_DEPLOYMENT.md)を参照してください。
+ローカルCLIの実送信と認証はmacOSのキーチェーン対応です。無料ブラウザー版はGoogleのtoken modelとMicrosoftのSPA PKCEを使い、トークンは画面のメモリで扱います。ブラウザー版の認証方式と権限は[設定手順](docs/WEB_DEPLOYMENT.md)を参照してください。
 
 ## Gmailで何が保持されるか
 
@@ -30,7 +30,7 @@ Gmail APIの[users.messages.send](https://developers.google.com/workspace/gmail/
 | 原本 | `original.eml`を追加添付。mboxパーサーが取り出したメール全体、またはGraphの`/$value`が返した全MIMEをバイト単位で保存 |
 | 署名、暗号化、DKIM | 原本内には残るが、外側の転送メールの署名として有効ではない。暗号化を解除する機能はない |
 
-原本はSQLiteの`raw_messages.mime`（BLOB）に保存します。本文の一覧用テキストは従来どおり200,000文字までですが、転送にはその切り詰めたテキストを使いません。元の入れ子メール添付もMIME内に保持します。Thunderbirdのmbox区切り行・エスケープ解除などを経たローカル原本であり、受信サーバー上のwire bytesとの同一性は保証しません。Gmailによる表示・再エンコード・添付検査は実アカウントで未検証です。
+ブラウザー版は転送待ち・保留中の原本をIndexedDBに保存し、成功後は原本を解放して送信履歴を残します。ローカル/サーバー版の原本はSQLiteの`raw_messages.mime`（BLOB）に保存します。本文の一覧用テキストは従来どおり200,000文字までですが、転送にはその切り詰めたテキストを使いません。元の入れ子メール添付もMIME内に保持します。Thunderbirdのmbox区切り行・エスケープ解除などを経たローカル原本であり、受信サーバー上のwire bytesとの同一性は保証しません。Gmailによる表示・再エンコード・添付検査は実アカウントで未検証です。
 
 原本`.eml`の追加でサイズが増えます。元MIMEは18 MiB、組立後は34 MiBという内部上限を設けています（両方を満たす必要があります）。不足・不正なMIMEや上限超過は`blocked`になり、添付を黙って落として送信しません。
 

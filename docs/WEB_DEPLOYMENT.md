@@ -1,100 +1,91 @@
-# Web版の設定とRenderへの公開
+# 無料のブラウザー版：GitHub Pagesで手動同期
 
-MacやThunderbirdを起動せず、ブラウザーでGoogleと大学のMicrosoftアカウントを接続する構成です。Rustサービスが画面、OAuth callback、定期取り込み、Gmail送信を担当します。GitHubはソースとCI、Renderは常時実行と永続保存を担当します。[GitHub Pagesは静的ホスティング](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)なので、この処理の実行先にはしません。
+普段使うブラウザーで1日2回など「同期して転送」を押す構成です。**有料サーバー・Render・永続ディスク・Macの常時起動は不要**です。ブラウザーからMicrosoft Graphを読み、Gmail APIへ送信します。RustのMIME処理をWebAssemblyとして画面に同梱しています。画面を閉じると処理は止まります。GitHub Actionsはビルド・テスト・静的サイト公開だけを行い、メール処理や定期送信はしません。
 
-**1つのデプロイにつき1人用**です。`HIRO_MAILD_OWNER_GMAIL`に設定した、確認済みの個人Gmailでだけログインできます。別の人が利用する場合は、自分のRenderサービス・保存領域・OAuthアプリを用意してください。複数人のアカウントを1つのサービスに登録する機能はありません。
+公開先：`https://suisan-neki.github.io/hiro-maild/`。公開成功はGitHubの「browser-pages」workflowとSettings → Pagesで確認してください。サイトには秘密情報・メール・アカウント固有の設定を含めません。
 
-## 1. GitHubからRenderを作成する
+## 1. GitHub Pagesを公開
 
-1. [Render Dashboard](https://dashboard.render.com/)でGitHubを連携し、New → Blueprintからこのリポジトリを選びます。レビュー中は`codex/gmail-forwarding`ブランチ、マージ後は`main`を選択してください。
-2. ルートの`render.yaml`を使います。Rust 1.95.0、ビルド`cargo build --release --locked`、起動`./target/release/hiro-maild web`、ヘルスチェック`/healthz`が設定済みです。
-3. `HIRO_MAILD_OWNER_GMAIL`に自分の個人Gmailを入力します。まずOAuth未設定で公開URLを確定し、次の手順でアプリを登録して、サービスのEnvironmentに4項目を追加します。その間、画面にはログイン設定待ちと表示されます。
-4. 有料のWebサービス（`0.5c-512mb`）と1 GBの永続ディスクを作成する構成です。作成画面で料金を確認してからデプロイしてください。無料の一時ファイル領域では転送履歴を保てません。[永続ディスクの公式説明](https://render.com/docs/disks)
-5. Renderが発行した実際の`https://…onrender.com`を控えます。`RENDER_EXTERNAL_URL`と`PORT`はRenderから取得するため、URLの推測は不要です。カスタムドメインを使う場合だけ`HIRO_MAILD_PUBLIC_URL=https://自分のドメイン`を追加します。
+この公開リポジトリでは[GitHub FreeでPagesを利用できます](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。Settings → Pages → Build and deployment → Sourceを**GitHub Actions**にします。
 
-ブランチを直接公開する場合のリンク：
+`.github/workflows/pages.yml`は`main`またはレビュー用の`codex/gmail-forwarding`へのpushで、Rust MIMEのテスト、WASMビルド、ブラウザーテストを通してから公開します。PRイベントではテストだけです。プラン変更やカード登録は不要です。forkで使う場合は自分のPages URLを以下の登録に使います。
 
-[Deploy to Render（レビュー用ブランチ）](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FSuisan-neki%2Fhiro-maild%2Ftree%2Fcodex%2Fgmail-forwarding)
+## 2. Googleを初回登録
 
-このリンクは有料リソースを自動作成済みという意味ではありません。Renderで内容の確認と作成が必要です。[ブランチを指定する公式手順](https://render.com/docs/deploy-to-render#specifying-a-branch)
-
-`autoDeployTrigger: checksPass`により、連携ブランチのGitHub CI成功後にRenderで再ビルドします。更新先ブランチを変えるときはRenderのBlueprint/サービス設定も合わせてください。公開されたコードが認証情報を扱うため、他人が利用する場合は自分のforkに連携する運用を推奨します。
-
-## 2. GoogleのWeb OAuthアプリ
-
-1. [Google Cloud Console](https://console.cloud.google.com/)でプロジェクトを作成し、Gmail APIを有効にします。
-2. Google Auth PlatformのAudienceをExternalにします。Testingなら自分のGmailをテストユーザーに追加します。
+1. [Google Cloud Console](https://console.cloud.google.com/)でプロジェクトを作り、**Gmail API**を有効にします。
+2. Google Auth Platform → AudienceをExternalにします。Testingの場合は、自分の個人Gmailをテストユーザーに追加します。
 3. Data Accessに`openid`、`email`、`https://www.googleapis.com/auth/gmail.send`を設定します。Gmailの読取・変更・削除権限は不要です。
-4. OAuth clientを**Web application**で作成します。Desktop app用クライアントとは別です。Authorized redirect URIsに、実際の公開URLを使って以下を完全一致で登録します。
+4. OAuth clientを**Web application**として作ります。Authorized JavaScript originsには **`https://suisan-neki.github.io`** を登録します。ここには`/hiro-maild/`などのパスを含めません。ポップアップのtoken modelなので、Google callbackやclient secretの入力は不要です。
+5. 公開client ID（`…apps.googleusercontent.com`）だけをコピーします。画面の「初回のログイン設定」に入力します。ダウンロードしたsecret JSONをアップロードしないでください。
 
-   `https://実際の公開ホスト/auth/google/callback`
+[Google公式のtoken model](https://developers.google.com/identity/oauth2/web/guides/use-token-model)を使用します。短期アクセストークンをユーザー操作で取得し、メモリだけで扱います。画面の再読込・終了後は再ログインします。期限切れ時は再接続します。refresh tokenをサーバー・GitHub・ブラウザーの永続領域に保存しません。GoogleのTesting/審査条件はその時点の管理画面を確認してください。他の人へ配布する場合も、自分のOAuthアプリで利用するか適切な同意・審査を行う必要があります。
 
-5. client IDを`GOOGLE_CLIENT_ID`、secretを`GOOGLE_CLIENT_SECRET`としてRenderのEnvironmentに設定します。secret JSONをGitHubへアップロードしないでください。
+## 3. 大学のMicrosoftアカウントを初回登録
 
-[Google Web OAuthの公式説明](https://developers.google.com/identity/protocols/oauth2/web-server)に従い、Authorization Code + PKCEとサーバー側のsecretで認証します。Googleの確認済みemailを所有者設定と照合し、アクセストークンをブラウザーへ渡しません。
+1. [Microsoft Entra管理センター](https://entra.microsoft.com/) → App registrationsで自分が管理できるアプリを登録します。別テナントで登録する場合は「任意の組織ディレクトリのアカウント」を選択します。個人Microsoftアカウントはこの画面の対象外です。
+2. Authentication → Add a platform → **Single-page application (SPA)**を選び、redirect URIを **`https://suisan-neki.github.io/hiro-maild/redirect.html`** として登録します。Webプラットフォームやclient secretは使いません。Implicit grantのaccess/ID tokenチェックは不要です。
+3. API permissions → Microsoft Graph → **Delegated permissions**で`User.Read`、`Mail.Read`を追加します。`Mail.ReadWrite`、`Mail.Send`やapplication permissionsは不要です。
+4. OverviewのApplication (client) IDを、画面のMicrosoft client IDへ入力します。
+5. 画面から広島大学のMicrosoftアカウントでログインし、要求された読取権限へ同意します。
 
-External/Testingのrefresh tokenは、このメール送信権限を含む場合[通常7日で期限切れ](https://developers.google.com/identity/protocols/oauth2#expiration)になります。Testingのままなら画面から再接続が必要です。Productionへの変更や他人向け公開は、Google側のアプリ審査・利用条件も確認してください。長期利用できるかは実アカウントで未検証です。
+**大学テナントがアプリ連携やユーザー同意を禁止している場合は、大学管理者の承認が必要です。** アプリ登録権限がなく登録できない場合も管理者への相談が必要です。この実装ではその制限を回避できません。実アカウントでの同意可否は未確認です。
 
-## 3. MicrosoftのWeb OAuthアプリ
+Microsoftの公式MSAL Browser 5を同梱し、Authorization Code + PKCEと専用[redirect bridge](https://learn.microsoft.com/en-us/entra/msal/javascript/browser/login-user#redirecturi-considerations)を使います。アクセストークン・MSALのrefresh token等は[memoryStorage](https://learn.microsoft.com/en-us/entra/msal/javascript/browser/caching)で扱います。MSALがログイン中だけ使うstate/PKCE等の一時データはsessionStorageに置きます。メール本文・認証エラー応答・トークンをログへ出力しません。
 
-1. [Microsoft Entra管理センター](https://entra.microsoft.com/)のApp registrationsでアプリを作成します。自分が管理できるテナントで登録する場合は「任意の組織ディレクトリのアカウント」を選びます。広大テナントだけのアプリを大学管理者が登録する場合は、そのテナントのIDを`MICROSOFT_TENANT_ID`に設定します。
-2. Authentication → Webに、実際の公開URLを完全一致で登録します。
+## 4. 普段の使い方（Macでも同じ）
 
-   `https://実際の公開ホスト/auth/microsoft/callback`
+1. 普段使うSafari・Chrome・Firefoxの通常ウィンドウで公開URLを開きます。プライベートモードやブラウザーデータの自動削除は避けてください。
+2. 初回だけ上記の公開client IDを入力し「設定を保存」。以後IDは同じブラウザーに保存されます。
+3. 「Gmailにログイン」と「大学のMicrosoftにログイン」。Googleは確認済みの個人`@gmail.com`、Microsoftは`@hiroshima-u.ac.jp`のアカウントを確認します。
+4. 初回だけ「今から受信するメール」または過去の日時を明示して「開始位置を保存」。**今から**を選べば過去分を大量送信しません。開始日時・Gmail・大学アカウントIDは固定され、後のログイン先が違うと同期を拒否します。
+5. 「対象を確認（送信なし）」でメールを取得・保存し、件名・送信者・対象件数・保留を確認します。GraphのGETだけを使い、Gmailへ送信しません。初回はこの確認が完了するまで送信ボタンを使えません。
+6. 「同期して転送」で新着分と再試行待ちを処理します。画面を開いたまま、停止中の表示になるまで待ってください。
+7. 次からは画面を開いて両方に接続し、「同期して転送」。受信してから次にボタンを押すまでGmailには届きません。タイマーによる定期実行はありません。
 
-3. Microsoft Graphの**Delegated permissions**を`User.Read`、`Mail.Read`にします。offline accessを要求します。Application permissionsや`Mail.ReadWrite`、`Mail.Send`は使いません。
-4. Certificates & secretsでclient secretを作成します。Application (client) IDを`MICROSOFT_CLIENT_ID`、secretの**Value**を`MICROSOFT_CLIENT_SECRET`としてRenderに設定します。Secret IDではありません。secretの期限切れ時には更新が必要です。
-5. 通常は`MICROSOFT_TENANT_ID=organizations`のまま、画面で広島大学アカウントにログインします。確認したmailまたはUPNが`@hiroshima-u.ac.jp`であることと、GraphのアカウントIDを検証します。最初に接続した大学アカウントに固定し、別アカウントへの切り替えは拒否します。
+1回に最大10ページ（各ページ最大50件を希望）と50通を処理します。大量の過去分を選んだ場合は対象確認を繰り返して初回同期を完了し、その後に転送を繰り返してください。「終了を待って停止」は実行中の通信を完了してから止めます。画面終了・Macスリープ・ネットワーク切断では途中で停止する場合があります。
 
-[Microsoft認証の公式説明](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)。**大学側がアプリへの同意を制限している場合は管理者の承認が必要です。アプリ登録そのものができない場合もあります。** コードだけでこの制限を解除することはできません。実アカウントでの同意・読取は未検証です。
+## 対象と保持する内容
 
-## 4. 画面から接続して開始する
+大学側の**Inbox（受信トレイ）**のみをGraphで読みます。サブフォルダー・アーカイブ・送信済みは対象外です。受信日時`receivedDateTime`で開始位置と比較し、元送信者のDateには依存しません。受信日時が不明・不正なものは対象外です。同期前にInboxから移動・削除されたものは取得できません。大学側を既読化・移動・削除・返信するAPI呼出しはありません。
 
-1. 公開URLを開き「Googleでログイン」。設定した所有者Gmailで同意します。ログインだけでは送信しません。
-2. 「Microsoftで接続」。大学アカウントで読取に同意します。
-3. 「今から受信するメール」を選び、開始位置を保存します。過去分も必要なら日時を選びます。入力日時はブラウザーのタイムゾーンとして扱い、UTCへ変換します。開始位置・宛先は一度保存すると変更できません。
-4. 「対象を確認（送信なし）」を押します。大学のInboxを読んでローカルに保存し、転送候補の件名・送信者・元日時・添付名を表示します。この操作はGmail送信を呼び出しません。転送を有効にした状態では別の定期処理が送信を続けるため、落ち着いて確認するには先に停止してください。
-5. 対象を確認できたら「転送を開始」。既定は60秒ごと、1サイクル最大20通を送信します。転送を止めるには「転送を停止」。処理中の1通は完了する場合があります。
-6. 初めての実運用では受信した1通の本文、添付、`original.eml`をGmailで確認します。同じGmailから自分宛の送信がInboxに表示されるか、迷惑メール扱いにならないかも確認してください。
+[GraphのMIME取得](https://learn.microsoft.com/en-us/graph/api/message-get?view=graph-rest-1.0)で全原本を取得します。本文・HTML・添付・CID・入れ子MIMEをバイト単位でコピーし、全原本も`original.eml`に追加添付します。外側のFrom/Toは個人Gmail、Dateは転送時刻、件名には`[広大メール]`を付けます。元送信者・元日時・元件名・元Message-IDは本文冒頭と原本ヘッダーに残ります。原本のDKIM/署名が新しいメールを認証するわけではありません。暗号化解除は行いません。Gmailの表示・添付検査・迷惑メール判定は実アカウントで未検証です。
 
-ブラウザーを閉じる・ログアウトする操作では自動転送を止めません。画面のログインは24時間で切れ、再ログインが必要です。停止していても受信の定期読み取りは続きます。
+原本18 MiB・組立後34 MiBの内部上限があります。原本コピーによる増量があるため、大学で受信できる全サイズを必ず転送できるわけではありません。上限超過は保留し、添付を黙って削りません。原本を取得できなかった上限超過メールは大学のWebメール等で手動確認してください。
 
-## 読取範囲とMIME
+## 履歴、失敗と再試行
 
-Graphで**Inboxのみ**を読みます。大学側のルールで別フォルダーへ直接振り分けられるメール、取り込み前にInboxから移動・削除されたメール、迷惑メールフォルダーのメールは対象外です。大学のメーラーで大学側の受信も確認してください。
+履歴・大学アカウントID・宛先・同期位置・開始日時・公開client IDはIndexedDBに保存します。原本は転送待ち・保留中だけ同じ場所に保持し、Gmailの成功が確定したら原本を解放して小さな送信済み履歴を残します。取得直後に原本と重複キー（Message-ID、なければSHA-256）を確定してからページ位置を進めます。再同期・Graph位置期限切れの再取得で送信済み履歴を上書きしません。複数タブの処理はWeb Locksで排他します。
 
-開始位置は[Graphの`receivedDateTime`](https://learn.microsoft.com/en-us/graph/api/message-delta?view=graph-rest-1.0)で判定します。送信者の古い/不正なDateとは別です。ImmutableId、nextLink/deltaLink、Graph IDの取込履歴を保存し、元Message-ID（なければSHA-256）でも重複排除します。delta状態が期限切れ（410）になれば同じ開始範囲から再取得し、既存履歴で重複を防ぎます。各ページの保存が終わる前にカーソルを進めません。1サイクル5ページまでで、残りは次回へ続けます。
+GmailへのPOST前に`送信中`を確定します。HTTP 429は60秒〜1時間のバックオフ後、次の手動同期で再試行します。認証や形式による拒否は保留し、接続を直して履歴から再試行を予約します。
 
-[Graphの`/$value`](https://learn.microsoft.com/en-us/graph/api/message-get?view=graph-rest-1.0)が返した全MIMEをSQLiteへバイト単位で保存します。サーバーからの取得上限は32 MiB、転送の内部上限は原本18 MiB・組立後34 MiBです。取得不能・不正なMIMEで同期が止まる場合は接続と対象メールを確認してください。転送上限超過は保留し、添付を黙って省略しません。
+**ネットワークエラー、timeout、408/5xx、不正な成功応答、送信後の保存失敗、送信途中の画面終了は結果不明です。** ブラウザーのfetchでは送信前後を確実に判別できないため、通信失敗を安易に自動再送しません。次の起動/同期で中断状態を結果不明へ回収します。Gmailの検索欄に画面の`in:anywhere rfc822msgid:…`を貼り、届いていないか確認してください。「Gmail確認後に再試行を予約」は重複リスクの確認後だけ実行できます。同じMessage-IDでもGmailが必ず重複排除する保証はなく、exactly-onceは保証しません。Gmailの読取権限を持たず自動照合はしません。
 
-元のContent-*ヘッダーと本文のMIME構造を包んで転送し、本文・HTML・添付・Content-ID・入れ子メールを保持します。さらに全原本を`original.eml`で添付します。外側のFrom/Toは個人Gmail、Dateは転送時刻、件名は`[広大メール]`付きです。元送信者・日時は本文の転送情報と原本ヘッダーに残ります。元DKIMや署名は新しい転送メールを認証しません。暗号化を解除する機能もありません。
+サイトデータ削除、別のブラウザー・端末・別のorigin、履歴の巻き戻しでは重複防止を引き継げません。**履歴を失った場合は同じ過去開始日時を再指定せず、Gmailを照合した上で「今から」を設定するなど、再送範囲を明示してください。** 自動バックアップ・端末間共有はありません。保存容量不足ではPOST前に停止します。ブラウザーがデータを退避・削除する可能性もあるため、永続保存の要求が許可されても消失を完全保証できません。
 
-## 失敗と重複
+## データの扱いと公式案内
 
-送信前にSQLiteへ送信意図を確定し、成功時にGmail message IDを保存します。既知の接続失敗と429は60秒〜1時間のバックオフで再試行します。認証失効・不正なMIME等は保留します。接続の再設定後に履歴から再試行を予約できます。
+メールは大学・手元のブラウザー・自分のGmailの間で扱います。GitHub Pagesには静的コードだけを置き、GitHubへメールやトークンをアップロードしません。大学・GoogleへのHTTPS通信にはOAuth bearer tokenを使います。公開コードの更新はこの権限を持つ画面を変更できるため、信頼するリポジトリ/公開先を使ってください。共有端末ではメール履歴も共有されます。
 
-送信途中のtimeout/reset、5xx、成功応答が不正、送信後の保存失敗やプロセス中断は**結果不明**です。次の転送実行で中断状態を結果不明へ回収し、自動再送しません。Gmailの検索欄に履歴の`rfc822msgid:…`を貼り付け、受信済みか確認してください。「確認して再試行」は重複リスクを了承したときだけ使います。同じMessage-IDでもGmail側が必ず重複排除する保証はなく、exactly-onceは保証できません。Gmailの読取権限を持たないため自動照合はしません。
+[大学の公式注意事項](https://www.media.hiroshima-u.ac.jp/services/hirodaimail/notice/)はMicrosoft 365サーバー側の外部自動転送設定をしないよう案内しています。このアプリはサーバー側転送設定を使いません。この方式やGmailでの外部保管が大学から承認済みという意味ではありません。大学の利用ルールとメール内容に従って利用してください。
 
-## 保存と運用
-
-- 永続ディスク`/var/data/hiro-maild`にDB（原本・送信履歴・同期位置）と添付を置きます。メール本文・添付はこのサーバーにも保存されます。認証トークンだけがアプリ側で暗号化され、メール本文自体はアプリ暗号化されません。Renderの保存領域の保護と管理者権限に依存します。
-- refresh tokenはChaCha20-Poly1305で暗号化し、provider・emailへ紐付けます。`HIRO_MAILD_TOKEN_KEY`はRenderが初回にランダム生成します。**再デプロイ時にも保持し、DBとは別に安全にバックアップしてください。** 失うと再ログインが必要です。既存DBを別の所有者へ使い回さないでください。
-- client secretと暗号鍵はRenderのEnvironmentだけに設定します。GitHub・ブラウザー保存領域・ログには入れません。アクセストークンはメモリだけ、セッションcookieはHttpOnly/Secure/SameSite、変更操作はOriginとCSRF tokenを確認します。OAuth callback queryには認証コードが含まれるため、URL全体のアクセスログを別途追加しないでください。
-- 永続ディスク付きの単一インスタンスで実行します。水平スケール、別サービスとの同じDB共有、複数送信workerの追加は対象外です。プロセスロックで1サイクル全体を排他します。再デプロイによる停止中は受信を読めず、次回の同期で追いつきます。
-- DBと添付の削除・古いバックアップへの巻き戻しは、送信済み履歴を失い重複送信につながります。復元時はまず停止して履歴とGmailを照合してください。保存済みメールを自動削除する機能はなく、ディスク使用量は増えます。容量はRenderで監視・拡張してください。
-- [大学の公式注意事項](https://www.media.hiroshima-u.ac.jp/services/hirodaimail/notice/)はサーバー側外部自動転送を設定しないよう案内しています。このアプリは外部転送設定を使いません。この方法や外部サーバーへのメール保管が大学から承認されたという意味でもありません。
-
-## ローカルで画面を確認する（認証・送信なし）
+## ローカルで開発・検証
 
 ```bash
-cargo build --locked
-export HIRO_MAILD_DATA_DIR="$(mktemp -d)"
-export HIRO_MAILD_PUBLIC_URL=http://127.0.0.1:8080
-export HIRO_MAILD_OWNER_GMAIL=you@gmail.com
-export HIRO_MAILD_TOKEN_KEY="$(openssl rand -hex 32)"
-./target/debug/hiro-maild web
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack --version 0.15.0 --locked
+cd browser
+npm ci
+npm run build
+npm test
+npm run dev
 ```
 
-`http://127.0.0.1:8080`を開くと、OAuth未設定の画面を確認できます。`.env.example`は設定名の参考です。プログラムは`.env`を自動読込しません。実アカウント用client secretをコマンド行の引数や共有ログへ書かないでください。
+開発画面は`http://127.0.0.1:8081/`。Google originsにはこのorigin、Microsoft SPA redirectには`http://127.0.0.1:8081/redirect.html`を別途登録します。本番との履歴共有はありません。認証しない状態でも設定画面を確認できます。本番CSPのまま開発時のHMR接続は許可しないため、変更後は画面を再読込してください。
 
-Web版は独自の定期workerを持ち、ローカルMCPを公開しません。従来のThunderbird・Mac Keychain・launchd方式もCLIに残っていますが、Web版とは別のデータディレクトリを使ってください。Web版ではMacの自動起動設定は不要です。
+```bash
+cargo check --all-targets --locked
+cargo test --all-targets --locked
+cargo test -p hiro-mail-core --locked
+```
+
+テストは架空メール・偽API・偽トークンのみです。実メールを送信しません。以前のRustサーバー版は[別構成の参考](SERVER_DEPLOYMENT.md)として残しますが、無料ブラウザー版の設定には使いません。CLI/Thunderbird/launchdも別の保存領域を持つ従来方式です。

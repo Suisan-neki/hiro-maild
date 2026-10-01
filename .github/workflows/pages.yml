@@ -1,0 +1,58 @@
+name: browser-pages
+
+on:
+  push:
+    branches: [main, codex/gmail-forwarding]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Test shared Rust MIME
+        run: cargo test -p hiro-mail-core --locked
+      - name: Install WASM builder
+        run: cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install browser dependencies
+        working-directory: browser
+        run: npm ci
+      - name: Build static browser app
+        working-directory: browser
+        run: npm run build
+      - name: Test manual sync without real mail
+        working-directory: browser
+        run: npm test
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: browser/dist
+  deploy:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/gmail-forwarding')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Publish free static site
+        id: deployment
+        uses: actions/deploy-pages@v4

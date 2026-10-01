@@ -11,3 +11,6 @@ client_secret*.json
 *.eml
 *.mbox
 *.log
+/browser/node_modules/
+/browser/dist/
+/browser/pkg/

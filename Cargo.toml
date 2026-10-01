@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/mail-core"]
+resolver = "2"
+
 [package]
 name = "hiro-maild"
 version = "0.1.0"
@@ -6,6 +10,7 @@ description = "Read-only Hiroshima University mail ingestion and Gmail forwardin
 license = "MIT"
 
 [dependencies]
+hiro-mail-core = { path = "crates/mail-core" }
 anyhow = "1"
 base64 = "0.22"
 chacha20poly1305 = "0.10"

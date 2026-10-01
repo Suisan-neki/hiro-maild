@@ -284,34 +284,7 @@ fn to_hex(bytes: &[u8]) -> String {
 }
 
 fn stable_content_hash(raw: &[u8]) -> String {
-    // Thunderbird rewrites these local flags on read/compaction. They must not create
-    // a new identity for messages without Message-ID. Keep the stored MIME untouched.
-    let mut digest = Sha256::new();
-    let mut headers = true;
-    let mut skip = false;
-    for line in raw.split_inclusive(|byte| *byte == b'\n') {
-        if headers {
-            let trimmed = line.strip_suffix(b"\n").unwrap_or(line);
-            let trimmed = trimmed.strip_suffix(b"\r").unwrap_or(trimmed);
-            if trimmed.is_empty() {
-                headers = false;
-                skip = false;
-            } else if !line.starts_with(b" ") && !line.starts_with(b"\t") {
-                let name = line.split(|byte| *byte == b':').next().unwrap_or_default();
-                skip = [
-                    b"x-mozilla-status".as_slice(),
-                    b"x-mozilla-status2",
-                    b"x-mozilla-keys",
-                ]
-                .iter()
-                .any(|ignored| name.eq_ignore_ascii_case(ignored));
-            }
-        }
-        if !skip {
-            digest.update(line);
-        }
-    }
-    to_hex(&digest.finalize())
+    hiro_mail_core::stable_content_hash(raw)
 }
 
 fn clean_message_id(value: &str) -> String {
