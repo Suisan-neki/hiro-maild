@@ -108,11 +108,11 @@ fn import_mbox(
         };
 
         match import_message(conn, path, raw, &message, attachments_root) {
-            Ok(ImportOutcome::Imported { attachments }) => {
+            Ok(ImportOutcome::Imported { attachments, .. }) => {
                 stats.imported_messages += 1;
                 stats.attachments_saved += attachments;
             }
-            Ok(ImportOutcome::Existing) => stats.skipped_existing += 1,
+            Ok(ImportOutcome::Existing { .. }) => stats.skipped_existing += 1,
             Err(error) => {
                 eprintln!(
                     "warning: failed to parse message in {}: {error:#}",
@@ -126,8 +126,23 @@ fn import_mbox(
 }
 
 enum ImportOutcome {
-    Imported { attachments: usize },
-    Existing,
+    Imported { attachments: usize, id: i64 },
+    Existing { id: i64 },
+}
+
+/// Import complete MIME obtained through a read-only source such as Microsoft Graph.
+pub fn import_raw(
+    conn: &Connection,
+    raw: &[u8],
+    source: &Path,
+    attachments_root: &Path,
+) -> Result<i64> {
+    let message = MessageParser::default()
+        .parse(raw)
+        .context("invalid original MIME")?;
+    match import_message(conn, source, raw, &message, attachments_root)? {
+        ImportOutcome::Imported { id, .. } | ImportOutcome::Existing { id } => Ok(id),
+    }
 }
 
 fn import_message(
@@ -186,8 +201,13 @@ fn import_message(
             "INSERT OR IGNORE INTO raw_messages (message_id_fk, mime) SELECT id, ?1 FROM messages WHERE stable_key = ?2",
             rusqlite::params![raw, stable_key],
         )?;
+        let id = tx.query_row(
+            "SELECT id FROM messages WHERE stable_key=?1",
+            [&stable_key],
+            |row| row.get(0),
+        )?;
         tx.commit()?;
-        return Ok(ImportOutcome::Existing);
+        return Ok(ImportOutcome::Existing { id });
     };
     if message_id.is_none() {
         tx.execute(
@@ -241,7 +261,10 @@ fn import_message(
     match import_result {
         Ok(count) => {
             tx.commit()?;
-            Ok(ImportOutcome::Imported { attachments: count })
+            Ok(ImportOutcome::Imported {
+                attachments: count,
+                id: db_id,
+            })
         }
         Err(error) => {
             drop(tx); // rolls back the database insert

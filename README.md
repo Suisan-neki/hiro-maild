@@ -1,16 +1,22 @@
 # hiro-maild
 
-広島大学の大学メールをThunderbirdのローカルmboxから読み取り、本文・添付・原本MIMEを保存して、個人Gmailで確認するためのRust CLIです。既存のread-only MCPと任意実行のAIトリアージも残っています。daemonはAIを呼び出しません。
+広島大学のメールを読み取り、本文・添付・原本MIMEを保存して、個人Gmailへ転送するRustアプリです。**Web版ではブラウザーからGmailと大学のMicrosoftアカウントを接続でき、Mac・Thunderbirdの常時起動は不要です。** 画面と定期workerをRenderにまとめて公開します。
+
+**[Web版の設定・Renderへのデプロイ手順](docs/WEB_DEPLOYMENT.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md)
+
+Web版は1デプロイ1人用です。所有者Gmailを設定し、開始日時を明示して、送信なしの対象確認後に転送を有効にします。GraphのInboxのみを読み、大学側への書込み権限を要求しません。OAuthアプリの登録とRenderの永続ディスク付き有料サービスが必要です。実アカウントの同意と実際の公開は未検証です。
+
+従来のThunderbirdローカルmbox方式、read-only MCP、任意実行のAIトリアージもCLIに残っています。今回AI機能は拡張しておらず、Web worker/daemonはAIを呼び出しません。以下のMac手順はローカル方式向けです。
 
 大学のサーバーやThunderbirdストアに書き込む処理、既読化・移動・削除・返信はありません。Gmail転送は、認証した個人Gmailから同じGmail宛に新しいメールを送る処理です。
 
 ## 公式案内と認証方式
 
-2026-10-01に確認した[大学の注意事項](https://www.media.hiroshima-u.ac.jp/services/hirodaimail/notice/)では、Microsoft 365サーバーの外部自動転送を設定しないよう案内されています。サーバー側の転送設定は使用しません。このローカル方式が大学から承認されたという意味ではありません。同ページが挙げる外部保管の情報漏洩、着信制限、喪失の懸念はローカル転送でも考慮が必要です。
+2026-10-01に確認した[大学の注意事項](https://www.media.hiroshima-u.ac.jp/services/hirodaimail/notice/)では、Microsoft 365サーバーの外部自動転送を設定しないよう案内されています。サーバー側の転送設定は使用しません。このアプリの方式が大学から承認されたという意味ではありません。同ページが挙げる外部保管の情報漏洩、着信制限、喪失の懸念は本アプリでも考慮が必要です。
 
 Gmail APIの[users.messages.send](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send)を使い、OAuth Desktop appの[loopback + PKCE認証](https://developers.google.com/identity/protocols/oauth2/native-app)を実装しています。メールの権限は`gmail.send`のみ。アカウントの照合用に`openid email`も要求し、Gmailの読取・削除権限は要求しません。通常のGoogleパスワードやSMTPアプリパスワードは使いません。Googleは[アプリパスワードよりGoogleによるログインを推奨](https://support.google.com/mail/answer/185833?hl=en)しています。
 
-実送信と認証はmacOSのキーチェーン対応です。取込・dry-run・履歴管理・モックテストはLinux/Windowsでも動作します。
+ローカルCLIの実送信と認証はmacOSのキーチェーン対応です。Web版はGoogle/MicrosoftのWeb OAuthを使い、refresh tokenをサーバーで暗号化して保存します。Web版の認証方式と権限は[設定手順](docs/WEB_DEPLOYMENT.md)を参照してください。
 
 ## Gmailで何が保持されるか
 
@@ -21,7 +27,7 @@ Gmail APIの[users.messages.send](https://developers.google.com/workspace/gmail/
 | 件名 | `[広大メール]`を付ける。UnicodeをRFC2047でエンコード |
 | 元送信者・元日時・元件名・元Message-ID | 本文先頭の転送情報に表示。元ヘッダーそのものは`.eml`に保持 |
 | 本文・HTML・添付・インライン画像 | 元のContent-*ヘッダーとMIME本文を入れ子にしてコピー。文字コード・Content-ID・添付名・バイナリ内容を維持 |
-| 原本 | `original.eml`を追加添付。mboxパーサーが取り出したローカルメール全体をバイト単位で保存 |
+| 原本 | `original.eml`を追加添付。mboxパーサーが取り出したメール全体、またはGraphの`/$value`が返した全MIMEをバイト単位で保存 |
 | 署名、暗号化、DKIM | 原本内には残るが、外側の転送メールの署名として有効ではない。暗号化を解除する機能はない |
 
 原本はSQLiteの`raw_messages.mime`（BLOB）に保存します。本文の一覧用テキストは従来どおり200,000文字までですが、転送にはその切り詰めたテキストを使いません。元の入れ子メール添付もMIME内に保持します。Thunderbirdのmbox区切り行・エスケープ解除などを経たローカル原本であり、受信サーバー上のwire bytesとの同一性は保証しません。Gmailによる表示・再エンコード・添付検査は実アカウントで未検証です。

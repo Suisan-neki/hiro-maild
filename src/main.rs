@@ -1,3 +1,5 @@
+mod cloud;
+mod cloud_auth;
 mod daemon;
 mod db;
 mod discovery;
@@ -7,6 +9,7 @@ mod gmail;
 mod importer;
 mod mcp;
 mod triage;
+mod web;
 
 use std::path::PathBuf;
 
@@ -17,7 +20,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "hiro-maild",
     version,
-    about = "Local Hiroshima University mail collector with optional Gmail forwarding"
+    about = "Read-only Hiroshima University mail collector with Gmail forwarding and web setup"
 )]
 struct Cli {
     /// Directory containing hiro-maild.sqlite3 and extracted attachments.
@@ -30,6 +33,11 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Serve the single-owner web UI and read-only Microsoft Graph forwarding worker.
+    Web {
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        bind: String,
+    },
     /// Authorize personal Gmail and store OAuth credentials in Mac Keychain. Sends no mail.
     GmailAuth {
         #[arg(long)]
@@ -141,6 +149,10 @@ fn main() -> Result<()> {
     let conn = db::open(&database_path)?;
 
     match cli.command {
+        Command::Web { bind } => {
+            drop(conn);
+            runtime()?.block_on(web::run(data_dir, bind))?;
+        }
         Command::GmailAuth { gmail, client_json } => gmail::authenticate(&gmail, &client_json)?,
         Command::ForwardInit {
             gmail,

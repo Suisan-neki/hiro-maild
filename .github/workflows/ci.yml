@@ -32,13 +32,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Check
-        run: cargo check --all-targets
+        run: cargo check --all-targets --locked
 
       - name: Test
-        run: cargo test --all-targets
+        run: cargo test --all-targets --locked
 
       - name: Build release binary
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package release binary (Unix)
         if: runner.os != 'Windows'

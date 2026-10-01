@@ -252,6 +252,9 @@ pub enum SendOutcome {
     Unknown(String),
 }
 pub trait Sender {
+    fn should_continue(&self) -> bool {
+        true
+    }
     fn send(&mut self, mime: &[u8]) -> SendOutcome;
 }
 
@@ -263,7 +266,7 @@ pub struct RunStats {
     pub unknown: usize,
 }
 
-fn recover_interrupted(conn: &Connection) -> Result<()> {
+pub(crate) fn recover_interrupted(conn: &Connection) -> Result<()> {
     let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
     tx.execute("UPDATE forward_attempts SET outcome = 'unknown', error_code = 'process_interrupted', finished_at = CURRENT_TIMESTAMP WHERE outcome = 'sending'", [])?;
     tx.execute("UPDATE deliveries SET status = 'unknown', error_code = 'process_interrupted' WHERE status = 'sending'", [])?;
@@ -290,6 +293,9 @@ pub fn run_with_sender(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut stats = RunStats::default();
     for id in ids {
+        if !sender.should_continue() {
+            break;
+        }
         let mime = match build_mime(conn, id, &cfg.gmail) {
             Ok(mime) => mime,
             Err(_) => {
@@ -385,7 +391,7 @@ pub fn retry(conn: &Connection, id: i64, accept_duplicate_risk: bool) -> Result<
     Ok(())
 }
 
-fn forwarding_message_id(stable_key: &str, gmail: &str) -> String {
+pub(crate) fn forwarding_message_id(stable_key: &str, gmail: &str) -> String {
     let digest = Sha256::digest(format!("{gmail}\n{stable_key}"));
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("<hiro-maild.{hex}@hiro-maild.local>")
@@ -673,6 +679,43 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM forward_attempts", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn pause_between_messages_stops_before_the_next_submission() {
+        struct PauseSender {
+            calls: usize,
+        }
+        impl Sender for PauseSender {
+            fn should_continue(&self) -> bool {
+                self.calls == 0
+            }
+            fn send(&mut self, _mime: &[u8]) -> SendOutcome {
+                self.calls += 1;
+                SendOutcome::Sent("fake-id".into())
+            }
+        }
+        let (_dir, conn) = setup();
+        init(&conn, 0);
+        let mut sender = PauseSender { calls: 0 };
+        let result = run_with_sender(&conn, &mut sender, 20, 0).unwrap();
+        assert_eq!(result.sent, 1);
+        assert_eq!(sender.calls, 1);
+        assert_eq!(
+            conn.query_row(
+                "SELECT attempts FROM deliveries WHERE message_id_fk=2",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM forward_attempts", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
 
     #[test]

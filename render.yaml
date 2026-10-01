@@ -1,0 +1,33 @@
+# Personal deployment: one server, one encrypted token vault, one durable ledger.
+services:
+  - type: web
+    name: hiro-maild
+    runtime: rust
+    plan: 0.5c-512mb
+    region: singapore
+    numInstances: 1
+    autoDeployTrigger: checksPass
+    buildCommand: cargo build --release --locked
+    startCommand: ./target/release/hiro-maild web
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 90
+    disk:
+      name: mail-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: RUSTUP_TOOLCHAIN
+        value: 1.95.0
+      - key: HIRO_MAILD_DATA_DIR
+        value: /var/data/hiro-maild
+      - key: HIRO_MAILD_TOKEN_KEY
+        generateValue: true
+      - key: HIRO_MAILD_OWNER_GMAIL
+        sync: false
+      # After Render assigns the public URL, register both Web OAuth apps and
+      # add their client IDs/secrets in the service's Environment screen.
+      # Keeping these out of initial prompts avoids guessing a callback URL.
+      - key: MICROSOFT_TENANT_ID
+        value: organizations
+      - key: HIRO_MAILD_CLOUD_INTERVAL_SECONDS
+        value: "60"

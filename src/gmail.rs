@@ -45,6 +45,12 @@ pub struct GmailSender {
 }
 
 impl GmailSender {
+    pub fn from_access_token(access_token: String) -> Result<Self> {
+        Ok(Self {
+            client: http_client()?,
+            access_token,
+        })
+    }
     pub fn connect(gmail: &str) -> Result<Self> {
         let credentials = load_credentials(gmail)?;
         let client = http_client()?;
