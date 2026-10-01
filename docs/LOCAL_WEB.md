@@ -47,4 +47,4 @@ launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.suisan.hiro-m
 
 ## 実機確認の残り
 
-このMacでは標準のThunderbird保存先が未検出です。Thunderbirdの大学ログイン・完全同期、Desktop appのGoogle認証、キーチェーン、実メールのGmail表示、launchdは本人の実アカウントで確認する必要があります。自作MicrosoftアプリでのWeb接続は実際に `AADSTS90094` で大学管理者承認待ちになったため、このローカル方式ではその接続を使用しません。
+このMacではThunderbird 157.0と大学IMAP/OAuth2アカウントを設定し、サーバー接続・本文のダウンロード開始・mbox形式を確認しました。自動既読は無効です。Google Desktop appの登録とJSON保存も完了しました。完全同期後の実メールの取り込み、Googleの送信権限への同意・キーチェーン・実メールのGmail表示・Mac再ログイン時のlaunchd起動は未確認です。ローカル画面のLaunchAgentは現在稼働しています。自作MicrosoftアプリでのWeb接続は実際に `AADSTS90094` で大学管理者承認待ちになったため、このローカル方式ではその接続を使用しません。

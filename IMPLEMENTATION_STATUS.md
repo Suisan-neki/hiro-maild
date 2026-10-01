@@ -1,4 +1,4 @@
-# 実装状況（2026-10-01）
+# 実装状況（2026-10-02）
 
 ## 現在選択している構成
 
@@ -44,6 +44,8 @@ GitHub Actionsはビルド、架空メールでのテスト、静的サイト公
 
 テストは架空メール・偽API・偽トークンだけを使用し、実メールは送信しません。RustのHTTPテストはloopbackモックを使います。ブラウザーテストには実WASMとfake IndexedDBを使い、添付/CID/入れ子メール/原本バイト、受信日時での初回範囲、送信なし確認、再開・再取得・別Graph IDの重複防止、429再試行、結果不明の保留、ページ失敗と期限切れからの再開、タブ排他、送信前保存失敗、上限超過を検証しています。
 
+ローカル画面の [PR #2 CI](https://github.com/Suisan-neki/hiro-maild/actions/runs/36877313145) はLinux/macOS/Windowsすべて成功し、[Pagesビルドとテスト](https://github.com/Suisan-neki/hiro-maild/actions/runs/36877313621) も成功。PRからのサイト公開はスキップされ、公開サイトへの反映にはmainへのマージが必要です。
+
 [GitHub Pages](https://suisan-neki.github.io/hiro-maild/)を公開済み。[最初の公開workflow](https://github.com/Suisan-neki/hiro-maild/actions/runs/36843147647)のbuild/deployが成功し、公開画面の起動とエラーなしをブラウザーで確認しました。Pagesの公開許可にはmainとレビュー用ブランチを登録しています。
 
 [共有Rust/WASM追加のCI](https://github.com/Suisan-neki/hiro-maild/actions/runs/36843147586)でLinux/macOS/Windowsのcargo check/testが成功。公開URLの正規化はブラウザーコードだけの修正で、20件のローカルテストが成功しています。各pushの「browser-pages」workflowでもWASMビルドとブラウザーテストを成功させてから公開します。
@@ -55,11 +57,11 @@ GitHub Actionsはビルド、架空メールでのテスト、静的サイト公
 
 ## 実アカウントで未確認
 
-- ローカル方式用のGoogle Desktop app登録、同意、キーチェーン保存・再接続。
+- ローカル方式用のGoogle同意、キーチェーン保存・再接続。Desktop appの登録とリポジトリ外へのJSON保存は本人の承認を得て完了し、送信権限の同意画面まで準備済みです。
 - 実際の大学Inbox/Graph delta/MIMEとブラウザーCORS通信。
 - 個人Gmailへの受信、HTML/CID/添付表示、添付検査、迷惑メール判定、same-account Inboxへの到着。
 - ユーザーが普段使うブラウザーでの保存容量・退避/削除・Macスリープや通信中断の挙動。
-- ローカル方式の実Thunderbirdプロフィール、完全同期、Keychain、Mac再ログイン時のlaunchd自動起動。現在のlaunchdプロセス稼働は確認済みです。標準のThunderbird保存先はこのMacで未検出です。
+- Thunderbirdの完全同期と実メールの取り込み範囲。Thunderbird 157.0をインストールし、大学アカウントのIMAP/OAuth2追加、大学サーバーへの接続、ローカルmboxへの本文ダウンロード開始を確認。すべての期間・サイズ制限なしの同期設定と、自動既読が無効であることを確認済みです。Mac再ログイン時のlaunchd自動起動は未確認ですが、現在のlaunchdプロセス稼働は確認済みです。
 
 ログインできること・大学側が承認すること・実メールが届くことは、モック検証だけでは保証していません。アプリ登録後、送信なしで対象を確認し、最初の少量をGmailで手動照合してください。
 
