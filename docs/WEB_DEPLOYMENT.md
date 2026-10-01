@@ -1,5 +1,7 @@
 # 無料のブラウザー版：GitHub Pagesで手動同期
 
+2026-10-01の実アカウント確認では、大学ログインが **AADSTS90094（管理者承認が必要）** で停止しました。個人Azureへのアプリ登録では大学のポリシーを変更できません。現在は[MacのThunderbirdとローカル画面](LOCAL_WEB.md)を使う構成を選択しています。以下は大学からアプリの同意を得られる場合の別構成です。
+
 普段使うブラウザーで1日2回など「同期して転送」を押す構成です。**有料サーバー・Render・永続ディスク・Macの常時起動は不要**です。ブラウザーからMicrosoft Graphを読み、Gmail APIへ送信します。RustのMIME処理をWebAssemblyとして画面に同梱しています。画面を閉じると処理は止まります。GitHub Actionsはビルド・テスト・静的サイト公開だけを行い、メール処理や定期送信はしません。
 
 公開先：`https://suisan-neki.github.io/hiro-maild/`。公開成功はGitHubの「browser-pages」workflowとSettings → Pagesで確認できます。レビュー用ブランチから公開済みです。サイトには秘密情報・メール・アカウント固有の設定を含めません。
@@ -28,7 +30,7 @@
 4. OverviewのApplication (client) IDを、画面のMicrosoft client IDへ入力します。
 5. 画面から広島大学のMicrosoftアカウントでログインし、要求された読取権限へ同意します。
 
-**大学テナントがアプリ連携やユーザー同意を禁止している場合は、大学管理者の承認が必要です。** アプリ登録権限がなく登録できない場合も管理者への相談が必要です。この実装ではその制限を回避できません。実アカウントでの同意可否は未確認です。
+**大学テナントがアプリ連携やユーザー同意を禁止している場合は、大学管理者の承認が必要です。** アプリ登録権限がなく登録できない場合も管理者への相談が必要です。この実装ではその制限を回避できません。今回の実ログインでは管理者承認が要求され、メールには接続できていません。
 
 Microsoftの公式MSAL Browser 5を同梱し、Authorization Code + PKCEと専用[redirect bridge](https://learn.microsoft.com/en-us/entra/msal/javascript/browser/login-user#redirecturi-considerations)を使います。アクセストークン・MSALのrefresh token等は[memoryStorage](https://learn.microsoft.com/en-us/entra/msal/javascript/browser/caching)で扱います。MSALがログイン中だけ使うstate/PKCE等の一時データはsessionStorageに置きます。メール本文・認証エラー応答・トークンをログへ出力しません。
 

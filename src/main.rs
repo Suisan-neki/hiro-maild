@@ -7,6 +7,7 @@ mod extract;
 mod forward;
 mod gmail;
 mod importer;
+mod local_web;
 mod mcp;
 mod triage;
 mod web;
@@ -33,6 +34,13 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Local browser UI: read Thunderbird's synchronized mail and forward on demand.
+    LocalWeb {
+        #[arg(long, default_value = "127.0.0.1:8082")]
+        bind: String,
+        #[arg(long, env = "HIRO_MAILD_THUNDERBIRD_STORE")]
+        store: Option<PathBuf>,
+    },
     /// Serve the single-owner web UI and read-only Microsoft Graph forwarding worker.
     Web {
         #[arg(long, default_value = "127.0.0.1:8080")]
@@ -149,6 +157,10 @@ fn main() -> Result<()> {
     let conn = db::open(&database_path)?;
 
     match cli.command {
+        Command::LocalWeb { bind, store } => {
+            drop(conn);
+            runtime()?.block_on(local_web::run(data_dir, bind, store))?;
+        }
         Command::Web { bind } => {
             drop(conn);
             runtime()?.block_on(web::run(data_dir, bind))?;
