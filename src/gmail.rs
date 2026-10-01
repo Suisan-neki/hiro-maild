@@ -184,6 +184,18 @@ pub fn random_token() -> Result<String> {
 
 #[cfg(target_os = "macos")]
 pub fn authenticate(gmail: &str, client_json: &std::path::Path) -> Result<()> {
+    let bytes = std::fs::read(client_json)
+        .map_err(|_| anyhow::anyhow!("cannot read OAuth desktop client JSON"))?;
+    authenticate_bytes(gmail, &bytes, |url| {
+        println!("Open this URL in your browser on this Mac (expires in 5 minutes):\n{url}");
+    })?;
+    println!("OAuth credentials saved in Mac Keychain. No email sent.");
+    Ok(())
+}
+
+/// Local UI input stays in memory; only verified credentials enter Mac Keychain.
+#[cfg(target_os = "macos")]
+pub fn authenticate_bytes(gmail: &str, bytes: &[u8], show_url: impl FnOnce(String)) -> Result<()> {
     use sha2::{Digest, Sha256};
     use std::{
         io::{Read, Write},
@@ -201,9 +213,7 @@ pub fn authenticate(gmail: &str, client_json: &std::path::Path) -> Result<()> {
     struct ClientFile {
         installed: DesktopClient,
     }
-    let bytes = std::fs::read(client_json)
-        .map_err(|_| anyhow::anyhow!("cannot read OAuth desktop client JSON"))?;
-    let config: ClientFile = serde_json::from_slice(&bytes).map_err(|_| {
+    let config: ClientFile = serde_json::from_slice(bytes).map_err(|_| {
         anyhow::anyhow!("expected downloaded Desktop app client JSON with installed section")
     })?;
     let client = http_client()?;
@@ -226,7 +236,7 @@ pub fn authenticate(gmail: &str, client_json: &std::path::Path) -> Result<()> {
         ("prompt", "consent"),
         ("login_hint", gmail),
     ]);
-    println!("Open this URL in your browser on this Mac (expires in 5 minutes):\n{url}");
+    show_url(url.to_string());
     let deadline = Instant::now() + Duration::from_secs(300);
     let code = loop {
         if Instant::now() >= deadline {
@@ -263,7 +273,7 @@ pub fn authenticate(gmail: &str, client_json: &std::path::Path) -> Result<()> {
         let callback = target
             .and_then(|target| reqwest::Url::parse(&format!("http://127.0.0.1{target}")).ok());
         let result = callback.as_ref().and_then(|url| callback_code(url, &state));
-        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nReturn to the hiro-maild terminal.\n");
+        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nCache-Control: no-store\r\nConnection: close\r\n\r\nReturn to the hiro-maild browser window or terminal.\n");
         if let Some(result) = result {
             break result?;
         }
@@ -308,8 +318,12 @@ pub fn authenticate(gmail: &str, client_json: &std::path::Path) -> Result<()> {
     entry(gmail)?
         .set_password(&serde_json::to_string(&credentials)?)
         .map_err(|_| anyhow::anyhow!("could not save OAuth credentials in Mac Keychain"))?;
-    println!("OAuth credentials saved in Mac Keychain. No email sent.");
     Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn authenticate_bytes(_: &str, _: &[u8], _: impl FnOnce(String)) -> Result<()> {
+    bail!("Gmail authentication requires macOS; no credentials were written")
 }
 
 #[cfg(any(target_os = "macos", test))]

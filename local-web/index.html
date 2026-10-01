@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>hiro-maild — Macから同期</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body><main>
+<p class="brand">hiro-maild · このMacで手動同期</p>
+<h1>大学の連絡を、いつものGmailへ。</h1>
+<p>Thunderbirdが同期した本文・添付を取り込み、確認したときだけ転送します。大学へのログインはThunderbirdで行います。</p>
+<p id="notice" role="status">読み込み中…</p>
+<section><h2>1. Thunderbirdの保存先</h2>
+<p>大学のIMAPアカウントを設定し、本文と添付を含むメール全体を同期してください。「同期」ボタンは保存済みのメールを読みます。Thunderbirdでの新着取得は先に済ませてください。</p>
+<a href="https://www.media.hiroshima-u.ac.jp/services/hirodaimail/mail-app/" target="_blank" rel="noreferrer">大学の公式設定手順</a>
+<label for="store">ローカル保存先（ImapMailの大学アカウントフォルダー）</label><input id="store" placeholder="/Users/自分/Library/Thunderbird/Profiles/…/ImapMail/outlook.office365.com" list="stores"><datalist id="stores"></datalist>
+<button id="configure">保存先を設定</button><p id="store-state"></p>
+<p class="muted">保存先内の全mboxが対象です。送信済み・ゴミ箱などを含めたくない場合は、対象フォルダーだけの読み取り用コピーを指定してください。大学側の既読・フォルダーは変更しません。</p></section>
+<section><h2>2. 宛先と転送開始位置</h2>
+<label for="gmail">自分の個人Gmail</label><input id="gmail" type="email" placeholder="you@gmail.com" autocomplete="email">
+<div id="start-controls"><label><input type="radio" name="mode" value="now" checked> 今からのメール（過去分を除外）</label><label><input type="radio" name="mode" value="since"> 日時を指定して過去分も含める</label><label for="since">転送開始日時</label><input id="since" type="datetime-local" disabled><button id="initialize">開始位置を保存</button></div>
+<p id="start-state"></p><p class="muted">初回取り込み後に開始位置を固定します。日時は元メールのDateで判定し、不明な日時は除外します。開始位置・宛先・保存先は後から変更できません。</p></section>
+<section><h2>3. Gmailへ接続</h2><p id="gmail-state">未接続</p>
+<details><summary>初回のGmail認証設定</summary><p>Google CloudでGmail APIを有効にし、OAuthクライアントを「Desktop app」として作成してJSONをダウンロードします。既存のGoogleプロジェクトとテストユーザーを使えます。Microsoftのアプリ登録は不要です。</p><label for="client">Desktop appのJSON（初回・再認証時）</label><input id="client" type="file" accept=".json,application/json"><p class="muted">JSONはこのMacのローカルプロセスへ渡します。認証情報はMacのキーチェーンに保存し、リポジトリ・ログへは保存しません。</p></details>
+<button id="auth">Gmailへ接続</button><a id="auth-link" hidden target="_blank" rel="noreferrer">Googleで認証する</a>
+<p class="muted">2回目以降はJSONを選ばず接続できます。Googleの承認・Macのキーチェーン確認が表示された場合は自分で確認してください。認証だけでは送信しません。</p></section>
+<section><h2>4. 確認して転送</h2><button id="preview">対象を確認（送信なし）</button><button id="send">同期して転送</button><p>1回に最大20通。転送履歴をこのMacに保存し、再起動・再取り込みで送信済みを再送しません。画面を閉じても、既に始めた処理はローカルプロセスで続きます。プロセスの停止中・Macのスリープ中は動きません。</p><h3>今回の転送対象（最大50件）</h3><div id="targets"></div><h3>転送履歴（新しい順・最大50件）</h3><div id="history"></div>
+<p class="muted">結果不明のメールは自動再送しません。Gmailで到着を確認し、重複する可能性を了承した場合だけ再試行します。データフォルダーを削除・変更すると履歴が失われ、重複送信につながります。</p></section>
+</main></body></html>

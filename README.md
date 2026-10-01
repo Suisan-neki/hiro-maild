@@ -1,10 +1,12 @@
 # hiro-maild
 
-広島大学のメールを、本文・添付込みで個人Gmailへ転送します。**無料のWeb版はGitHub Pagesで公開し、ブラウザーを開いて「同期して転送」を押したときだけ動きます。** 1日2回など手動で確認する用途に対応し、常時稼働サーバー・Render・有料ディスク・Thunderbirdは不要です。既存RustのMIME処理をWebAssemblyとして共用しています。
+広島大学のメールを、本文・添付込みで個人Gmailへ転送します。**現在の運用は、MacのThunderbirdで受信し、Mac上のブラウザ画面で対象を確認して手動転送する構成です。** 有料サーバー・Render・永続ディスク契約は不要です。ThunderbirdとローカルのRustプログラムを起動して使います。
 
-**[無料Web画面を開く](https://suisan-neki.github.io/hiro-maild/)** · **[ログイン設定・使い方](docs/WEB_DEPLOYMENT.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md)
+**[Macの画面・設定手順](docs/LOCAL_WEB.md)** · [実装済み/未確認の範囲](IMPLEMENTATION_STATUS.md) · [大学APIを使うPages版の手順](docs/WEB_DEPLOYMENT.md)
 
-初回だけGoogle/MicrosoftのOAuthアプリを登録し、公開client IDを画面から設定します。両方にログインして、転送開始日時を明示し、送信なしの対象確認後に転送します。アクセストークンは画面のメモリ、履歴は同じブラウザーのIndexedDBに保持します。画面終了後は再接続が必要で、別端末・サイトデータ削除後には履歴を引き継げません。大学側の管理者同意が必要か、実アカウントでの送受信は未確認です。
+`hiro-maild local-web`で表示される `http://127.0.0.1:8082/` を開き、Thunderbirdの保存先・個人Gmail・転送開始位置を設定します。GoogleのDesktop app OAuthで認証し、資格情報はMacのキーチェーン、メールと履歴はSQLiteへ保存します。送信なしの確認はGoogle認証前でも利用できます。Microsoftの独自アプリ登録は不要です。
+
+GitHub Pagesだけで動くGraph版も残していますが、2026-10-01の大学アカウントでのログインは **AADSTS90094（管理者承認が必要）** で停止しました。個人Azureにアプリを作っても大学の同意ポリシーは変わりません。現在選択したローカル画面は大学APIを使用しません。Thunderbirdの実同期とGmailの実認証・受信は別途確認が必要です。
 
 大学Inboxは読み取りだけで、既読化・移動・削除・返信を行いません。Gmail転送は認証した個人Gmailから同じGmailへ新しいメールを送る処理です。初回の大量転送防止、再同期の重複排除、履歴、失敗の再試行、結果不明時の保留を実装しています。
 
