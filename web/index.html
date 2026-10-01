@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>hiro-maild — 広大メールをGmailへ</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/">hiro-maild<span>広島大学メール</span></a
+      ><span class="pill">個人用</span>
+    </header>
+    <main>
+      <div class="heading">
+        <p class="eyebrow">MAIL CONNECTION</p>
+        <h1>大学の連絡を、いつものGmailへ。</h1>
+        <p>
+          両方のアカウントを接続し、転送を始める日時を選んでください。本文と添付をまとめて届けます。
+        </p>
+      </div>
+      <div id="notice" role="status" aria-live="polite" hidden></div>
+      <div class="layout">
+        <aside class="card setup">
+          <h2>接続と設定</h2>
+          <section>
+            <div class="step">
+              <span>1</span>
+              <h3>受け取るGmail</h3>
+            </div>
+            <p id="gmail-state">接続状態を確認しています…</p>
+            <button id="google-login">Googleでログイン</button
+            ><button id="logout" class="text-button" hidden>ログアウト</button>
+            <p class="hint" id="google-help">
+              このサービスに設定された所有者だけがログインできます。
+            </p>
+          </section>
+          <section>
+            <div class="step">
+              <span>2</span>
+              <h3>広大メール</h3>
+            </div>
+            <p id="university-state">Gmailへのログイン後に接続できます。</p>
+            <button id="microsoft-login" disabled>Microsoftで接続</button>
+            <p class="hint">
+              読み取り権限のみを使います。既読化・移動・削除は行いません。
+            </p>
+          </section>
+          <section>
+            <div class="step">
+              <span>3</span>
+              <h3>転送開始位置</h3>
+            </div>
+            <div id="start-form">
+              <label class="choice"
+                ><input
+                  type="radio"
+                  name="start"
+                  value="now"
+                  checked
+                />今から受信するメール</label
+              ><label class="choice"
+                ><input
+                  type="radio"
+                  name="start"
+                  value="since"
+                />日時を指定して過去分を含める</label
+              ><label class="hint" for="since"
+                >開始日時（この端末のタイムゾーン）</label
+              ><input type="datetime-local" id="since" disabled /><button
+                id="save-start"
+                disabled
+              >
+                開始位置を保存
+              </button>
+            </div>
+            <p id="start-state" hidden></p>
+            <p class="hint">
+              大学側の受信日時で判定します。開始位置は保存後に変更できません。
+            </p>
+          </section>
+        </aside>
+        <div class="content">
+          <section class="card operation">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">FORWARDING</p>
+                <h2 id="run-state">接続待ち</h2>
+              </div>
+              <span id="run-badge" class="badge">停止中</span>
+            </div>
+            <p id="run-help">まず左の手順でアカウントを接続してください。</p>
+            <div class="actions">
+              <button id="preview" class="secondary" disabled>
+                対象を確認（送信なし）</button
+              ><button id="toggle" disabled>転送を開始</button>
+            </div>
+            <p class="hint">
+              ブラウザーを閉じても、転送はサーバーで続きます。停止ボタンで次の送信から停止します。処理中の1通は完了する場合があります。
+            </p>
+            <div class="stats">
+              <div><strong id="sent">—</strong><span>転送済み</span></div>
+              <div>
+                <strong id="pending">—</strong><span>待機・再試行</span>
+              </div>
+              <div><strong id="held">—</strong><span>要確認</span></div>
+            </div>
+            <p id="last-sync" class="hint"></p>
+          </section>
+          <section class="card">
+            <div class="section-title">
+              <h2>転送対象</h2>
+              <span class="hint">次に送信できる最大50件</span>
+            </div>
+            <div id="targets" class="message-list">
+              <p class="empty">
+                接続と開始位置の設定後、送信せずに対象を確認できます。
+              </p>
+            </div>
+          </section>
+          <section class="card">
+            <div class="section-title">
+              <h2>転送履歴</h2>
+              <span class="hint">直近30件</span>
+            </div>
+            <p class="hint">
+              結果不明のメールは自動再送しません。Gmailで検索して受信済みか確認してから再試行してください。
+            </p>
+            <div id="history" class="message-list">
+              <p class="empty">転送履歴はまだありません。</p>
+            </div>
+          </section>
+        </div>
+      </div>
+      <footer>
+        hiro-maild · 添付に原本
+        <code>original.eml</code>
+        を追加します。Gmailの表示上の送信者は自分、日時は転送時刻です。元の送信者と日時は本文と原本に保持します。
+      </footer>
+    </main>
+  </body>
+</html>

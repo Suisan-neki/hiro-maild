@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -93,6 +93,15 @@ pub fn open(path: &Path) -> Result<Connection> {
         CREATE INDEX IF NOT EXISTS idx_messages_sent_at ON messages(sent_at);
         CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages(message_id);
 
+        CREATE TABLE IF NOT EXISTS raw_messages (
+            message_id_fk INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+            mime BLOB NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS message_fingerprints (
+            sha256 TEXT PRIMARY KEY,
+            message_id_fk INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS attachments (
             id              INTEGER PRIMARY KEY,
             message_id_fk   INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -123,6 +132,7 @@ pub fn open(path: &Path) -> Result<Connection> {
         );
         "#,
     )?;
+    crate::forward::schema(&conn)?;
     Ok(conn)
 }
 
@@ -230,7 +240,18 @@ pub fn get_message(conn: &Connection, id: i64) -> Result<Option<MessageRow>> {
         )
         .optional()?;
 
-    let Some((id, stable_key, message_id, subject, sender_name, sender_address, sent_at, body_text, source_path)) = base else {
+    let Some((
+        id,
+        stable_key,
+        message_id,
+        subject,
+        sender_name,
+        sender_address,
+        sent_at,
+        body_text,
+        source_path,
+    )) = base
+    else {
         return Ok(None);
     };
 
@@ -263,7 +284,11 @@ pub fn recent_summaries(conn: &Connection, limit: usize) -> Result<Vec<MessageSu
     summarize_messages(conn, ids)
 }
 
-pub fn search_summaries(conn: &Connection, query: &str, limit: usize) -> Result<Vec<MessageSummary>> {
+pub fn search_summaries(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<MessageSummary>> {
     let pattern = format!("%{query}%");
     let mut stmt = conn.prepare(
         r#"
@@ -385,7 +410,12 @@ fn triage_for(conn: &Connection, message_id: i64) -> Result<Option<TriageRow>> {
     .map_err(Into::into)
 }
 
-pub fn save_triage(conn: &Connection, message_id: i64, triage: &TriageRow, raw_json: &str) -> Result<()> {
+pub fn save_triage(
+    conn: &Connection,
+    message_id: i64,
+    triage: &TriageRow,
+    raw_json: &str,
+) -> Result<()> {
     conn.execute(
         r#"
         INSERT INTO triage (

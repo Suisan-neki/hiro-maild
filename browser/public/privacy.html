@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <link rel="stylesheet" href="./guide.css" />
+    <title>データの扱い — hiro-maild</title>
+  </head>
+  <body>
+    <a href="./">← 同期画面へ</a>
+    <h1>データの扱い</h1>
+    <p>
+      hiro-maildの無料ブラウザー版は、利用者が操作したときだけMicrosoft
+      Graphから大学の受信トレイを読み、自分のGmailへメールを送ります。大学・Googleのパスワードは各社のログイン画面で入力し、本アプリで保存しません。
+    </p>
+    <h2>このブラウザーに保存するもの</h2>
+    <p>
+      IndexedDBに公開OAuth client
+      ID、接続先アカウントの識別子、転送開始日時、同期位置、メールの件名・送信者・受信日時・送信履歴を保存します。原本MIMEは転送待ち・保留中だけ保存し、Gmailの成功応答と履歴の保存が確定すると原本を解放します。失敗・結果不明の場合は原本を保持して再試行に備えます。メールは暗号化せずブラウザーの保存領域に置くため、共有端末や同じプロファイルの利用者にアクセスされる可能性があります。
+    </p>
+    <h2>認証と通信</h2>
+    <p>
+      GoogleのアクセストークンとMicrosoft
+      MSALのトークンは画面のメモリで扱い、終了・再読込後は再接続します。Microsoftの認証中のstate/PKCE等の一時データにはMSALのsessionStorageを使います。MicrosoftにはUser.Read/Mail.Read、Googleにはopenid/email/gmail.sendを要求します。大学の既読化・移動・削除・送信権限、Gmailの読取・削除権限は要求しません。
+    </p>
+    <p>
+      ブラウザーはMicrosoftの認証/Graph、Googleの認証/ユーザー情報/Gmail
+      APIへ直接HTTPS通信します。Googleの認証ライブラリをGoogleから読み込み、MicrosoftのライブラリとRust/WASMは静的アプリへ同梱します。これらの認証サービスには各社の規約とプライバシー方針が適用されます。
+    </p>
+    <h2>GitHubとデータの削除</h2>
+    <p>
+      GitHub
+      Pagesには静的なプログラムだけを公開します。メール・トークン・パスワードをGitHubや開発者のサーバーへアップロードしません。アクセス解析や広告コードは入れていません。GitHubは静的ページ配信の通常のアクセス情報を扱います。公開コードの変更はアカウント権限を使う画面を変更できるため、信頼する公開先を利用してください。
+    </p>
+    <p>
+      「接続を解除」でこの画面のトークンを破棄できます。アプリへの同意自体の取消しはGoogle/Microsoftのアカウント管理画面で行ってください。ローカルのメール・履歴・公開client
+      IDはブラウザーのサイトデータ削除で消せますが、<strong
+        >削除後の再同期では重複送信の可能性があります。</strong
+      >
+      Gmailへの転送済みメールや大学のメールは、本アプリのデータ削除では消えません。
+    </p>
+    <h2>大学の公式案内</h2>
+    <p>
+      <a href="https://www.media.hiroshima-u.ac.jp/services/hirodaimail/notice/"
+        >大学の注意事項</a
+      >はMicrosoft
+      365サーバー側の外部自動転送設定をしないよう案内しています。このアプリはその設定を使用しません。この方式やGmailへの外部保管が大学から承認されたという意味ではありません。大学の利用ルールとメール内容に従って利用してください。
+    </p>
+    <p>
+      2026年10月1日 ·
+      <a href="https://github.com/Suisan-neki/hiro-maild/issues"
+        >連絡先：リポジトリのIssues</a
+      >（トークンやメール本文を投稿しないでください）
+    </p>
+  </body>
+</html>

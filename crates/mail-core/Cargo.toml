@@ -1,0 +1,21 @@
+[package]
+name = "hiro-mail-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+browser = ["dep:wasm-bindgen", "dep:serde_json"]
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+mail-parser = { version = "0.11.8", features = ["full_encoding"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.11"
+time = { version = "0.3", features = ["formatting"] }
+wasm-bindgen = { version = "0.2", optional = true }
+serde_json = { version = "1", optional = true }

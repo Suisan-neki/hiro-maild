@@ -1,12 +1,12 @@
 use std::{
     fs::File,
-    io::BufReader,
+    io::{BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
-use mail_parser::{mailbox::mbox::MessageIterator, Message, MessageParser, MimeHeaders};
-use rusqlite::Connection;
+use mail_parser::{Message, MessageParser, MimeHeaders, mailbox::mbox::MessageIterator};
+use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
@@ -41,7 +41,11 @@ pub fn sync_store(conn: &Connection, store: &Path, attachments_root: &Path) -> R
 
 fn discover_mbox_files(store: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    for entry in WalkDir::new(store).follow_links(false).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(store)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         let path = entry.path();
         if !path.is_file() || path.extension().is_some() {
             continue;
@@ -68,13 +72,29 @@ fn import_mbox(
     stats: &mut SyncStats,
 ) -> Result<()> {
     let file = File::open(path).with_context(|| format!("open mbox {}", path.display()))?;
-    let reader = BufReader::new(file);
+    let before = file.metadata()?;
+    // Parse a private, stable snapshot: Thunderbird may append/compact while the daemon
+    // is reading. Defer snapshots that changed while copying instead of parsing a moving tail.
+    let mut snapshot = tempfile::tempfile()?;
+    let copied = std::io::copy(&mut file.take(before.len()), &mut snapshot)?;
+    let after = std::fs::metadata(path)?;
+    if copied != before.len()
+        || before.len() != after.len()
+        || before.modified()? != after.modified()?
+    {
+        anyhow::bail!("mbox changed during snapshot; defer this file until the next sync");
+    }
+    snapshot.seek(SeekFrom::Start(0))?;
+    let reader = BufReader::new(snapshot);
 
     for raw_message in MessageIterator::new(reader) {
         let raw_message = match raw_message {
             Ok(value) => value,
             Err(error) => {
-                eprintln!("warning: malformed mbox entry in {}: {error}", path.display());
+                eprintln!(
+                    "warning: malformed mbox entry in {}: {error}",
+                    path.display()
+                );
                 stats.parse_errors += 1;
                 continue;
             }
@@ -88,13 +108,16 @@ fn import_mbox(
         };
 
         match import_message(conn, path, raw, &message, attachments_root) {
-            Ok(ImportOutcome::Imported { attachments }) => {
+            Ok(ImportOutcome::Imported { attachments, .. }) => {
                 stats.imported_messages += 1;
                 stats.attachments_saved += attachments;
             }
-            Ok(ImportOutcome::Existing) => stats.skipped_existing += 1,
+            Ok(ImportOutcome::Existing { .. }) => stats.skipped_existing += 1,
             Err(error) => {
-                eprintln!("warning: failed to parse message in {}: {error:#}", path.display());
+                eprintln!(
+                    "warning: failed to parse message in {}: {error:#}",
+                    path.display()
+                );
                 stats.parse_errors += 1;
             }
         }
@@ -103,8 +126,23 @@ fn import_mbox(
 }
 
 enum ImportOutcome {
-    Imported { attachments: usize },
-    Existing,
+    Imported { attachments: usize, id: i64 },
+    Existing { id: i64 },
+}
+
+/// Import complete MIME obtained through a read-only source such as Microsoft Graph.
+pub fn import_raw(
+    conn: &Connection,
+    raw: &[u8],
+    source: &Path,
+    attachments_root: &Path,
+) -> Result<i64> {
+    let message = MessageParser::default()
+        .parse(raw)
+        .context("invalid original MIME")?;
+    match import_message(conn, source, raw, &message, attachments_root)? {
+        ImportOutcome::Imported { id, .. } | ImportOutcome::Existing { id } => Ok(id),
+    }
 }
 
 fn import_message(
@@ -115,11 +153,25 @@ fn import_message(
     attachments_root: &Path,
 ) -> Result<ImportOutcome> {
     let raw_sha256 = to_hex(&Sha256::digest(raw));
-    let message_id = message.message_id().map(clean_message_id);
-    let stable_key = message_id
+    let message_id = message
+        .message_id()
+        .map(clean_message_id)
+        .filter(|id| !id.is_empty());
+    let content_hash = stable_content_hash(raw);
+    let mut stable_key = message_id
         .as_deref()
         .map(|id| format!("mid:{id}"))
-        .unwrap_or_else(|| format!("sha256:{raw_sha256}"));
+        .unwrap_or_else(|| format!("sha256:{content_hash}"));
+
+    if message_id.is_none() {
+        // Compatibility with the original raw-hash identity on an unchanged legacy mbox.
+        if let Some(legacy_key) = conn.query_row(
+            "SELECT m.stable_key FROM messages m LEFT JOIN message_fingerprints f ON f.message_id_fk=m.id WHERE m.message_id IS NULL AND (m.raw_sha256 = ?1 OR f.sha256 = ?2) LIMIT 1",
+            rusqlite::params![raw_sha256, content_hash], |row| row.get::<_, String>(0),
+        ).optional()? {
+            stable_key = legacy_key;
+        }
+    }
 
     let subject = message.subject().unwrap_or("(no subject)");
     let (sender_name, sender_address) = sender(message);
@@ -141,9 +193,32 @@ fn import_message(
 
     let tx = conn.unchecked_transaction()?;
     let Some(db_id) = db::insert_message(&tx, &new)? else {
+        if message_id.is_none() {
+            tx.execute("INSERT OR IGNORE INTO message_fingerprints (sha256, message_id_fk) SELECT ?1, id FROM messages WHERE stable_key = ?2", rusqlite::params![content_hash, stable_key])?;
+        }
+        // Backfill old installations on resync, without replacing the first saved original.
+        tx.execute(
+            "INSERT OR IGNORE INTO raw_messages (message_id_fk, mime) SELECT id, ?1 FROM messages WHERE stable_key = ?2",
+            rusqlite::params![raw, stable_key],
+        )?;
+        let id = tx.query_row(
+            "SELECT id FROM messages WHERE stable_key=?1",
+            [&stable_key],
+            |row| row.get(0),
+        )?;
         tx.commit()?;
-        return Ok(ImportOutcome::Existing);
+        return Ok(ImportOutcome::Existing { id });
     };
+    if message_id.is_none() {
+        tx.execute(
+            "INSERT INTO message_fingerprints (sha256, message_id_fk) VALUES (?1, ?2)",
+            rusqlite::params![content_hash, db_id],
+        )?;
+    }
+    tx.execute(
+        "INSERT INTO raw_messages (message_id_fk, mime) VALUES (?1, ?2)",
+        rusqlite::params![db_id, raw],
+    )?;
 
     let message_attachment_dir = attachments_root.join(db_id.to_string());
     let import_result = (|| -> Result<usize> {
@@ -186,7 +261,10 @@ fn import_message(
     match import_result {
         Ok(count) => {
             tx.commit()?;
-            Ok(ImportOutcome::Imported { attachments: count })
+            Ok(ImportOutcome::Imported {
+                attachments: count,
+                id: db_id,
+            })
         }
         Err(error) => {
             drop(tx); // rolls back the database insert
@@ -203,6 +281,10 @@ fn to_hex(bytes: &[u8]) -> String {
         let _ = write!(out, "{byte:02x}");
     }
     out
+}
+
+fn stable_content_hash(raw: &[u8]) -> String {
+    hiro_mail_core::stable_content_hash(raw)
 }
 
 fn clean_message_id(value: &str) -> String {
@@ -272,11 +354,13 @@ mod tests {
         assert_eq!(messages[0].subject, "Attachment test");
         assert_eq!(messages[0].attachments.len(), 1);
         assert_eq!(messages[0].attachments[0].filename, "notice.txt");
-        assert!(messages[0].attachments[0]
-            .extracted_text
-            .as_deref()
-            .unwrap_or_default()
-            .contains("提出期限"));
+        assert!(
+            messages[0].attachments[0]
+                .extracted_text
+                .as_deref()
+                .unwrap_or_default()
+                .contains("提出期限")
+        );
 
         let second = sync_store(&conn, &store, &attachments).unwrap();
         assert_eq!(second.imported_messages, 0);
